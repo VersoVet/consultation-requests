@@ -1,10 +1,11 @@
 """SQLite database setup and management."""
 
+import asyncio
 import json
 import logging
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-
-import aiosqlite
 
 from src.config import DATABASE_PATH
 
@@ -13,14 +14,30 @@ logger = logging.getLogger(__name__)
 # Ensure data directory exists
 DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+# Global thread pool for database operations
+_executor = ThreadPoolExecutor(max_workers=1)
+
+# Global SQLite connection
+_db_conn: sqlite3.Connection | None = None
+
+
+def _get_sync_db() -> sqlite3.Connection:
+    """Get a synchronous SQLite connection."""
+    global _db_conn
+    if _db_conn is None:
+        _db_conn = sqlite3.connect(str(DATABASE_PATH), check_same_thread=False, timeout=10.0)
+        _db_conn.row_factory = sqlite3.Row
+    return _db_conn
+
 
 async def init_db() -> None:
     """Initialize SQLite database with schema."""
-    async with aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False, timeout=10.0) as db:
-        # Disable features that may create background threads
-        await db.execute("PRAGMA journal_mode = OFF")
-        await db.execute("PRAGMA synchronous = NORMAL")
-        await db.execute(
+    loop = asyncio.get_event_loop()
+
+    def _init():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS consultations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,13 +55,16 @@ async def init_db() -> None:
             )
             """
         )
-        await db.commit()
+        conn.commit()
         logger.info(f"Database initialized: {DATABASE_PATH}")
 
+    await loop.run_in_executor(_executor, _init)
 
-async def get_db() -> aiosqlite.Connection:
-    """Get database connection."""
-    return await aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False)
+
+async def get_db() -> sqlite3.Connection:
+    """Get database connection (synchronous)."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, _get_sync_db)
 
 
 async def create_consultation(
@@ -64,26 +84,39 @@ async def create_consultation(
     Returns:
         Database ID of created consultation
     """
-    async with await get_db() as db:
-        cursor = await db.execute(
+    loop = asyncio.get_event_loop()
+
+    def _create():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
             """
             INSERT INTO consultations (uuid, submitted_at, submitter_type, data_json, status)
             VALUES (?, ?, ?, ?, ?)
             """,
             (uuid, submitted_at, submitter_type, data_json, "pending"),
         )
-        await db.commit()
+        conn.commit()
         return int(cursor.lastrowid or 0)
+
+    return await loop.run_in_executor(_executor, _create)
 
 
 async def get_consultation(consultation_id: int) -> dict | None:
     """Get consultation by ID."""
-    async with await get_db() as db:
-        cursor = await db.execute("SELECT * FROM consultations WHERE id = ?", (consultation_id,))
-        row = await cursor.fetchone()
+    loop = asyncio.get_event_loop()
+
+    def _get():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM consultations WHERE id = ?", (consultation_id,))
+        row = cursor.fetchone()
         if not row:
             return None
-        return _row_to_dict(row, cursor.description)
+        cols = [desc[0] for desc in cursor.description]
+        return {cols[i]: row[i] for i in range(len(cols))}
+
+    return await loop.run_in_executor(_executor, _get)
 
 
 async def list_consultations(
@@ -92,9 +125,13 @@ async def list_consultations(
     offset: int = 0,
 ) -> list[dict]:
     """List consultations with optional filtering."""
-    async with await get_db() as db:
+    loop = asyncio.get_event_loop()
+
+    def _list():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
         if status:
-            cursor = await db.execute(
+            cursor.execute(
                 """
                 SELECT * FROM consultations
                 WHERE status = ?
@@ -104,7 +141,7 @@ async def list_consultations(
                 (status, limit, offset),
             )
         else:
-            cursor = await db.execute(
+            cursor.execute(
                 """
                 SELECT * FROM consultations
                 ORDER BY submitted_at DESC
@@ -112,8 +149,11 @@ async def list_consultations(
                 """,
                 (limit, offset),
             )
-        rows = await cursor.fetchall()
-        return [_row_to_dict(row, cursor.description) for row in rows]
+        rows = cursor.fetchall()
+        cols = [desc[0] for desc in cursor.description]
+        return [{cols[i]: row[i] for i in range(len(cols))} for row in rows]
+
+    return await loop.run_in_executor(_executor, _list)
 
 
 async def update_consultation_status(
@@ -121,12 +161,18 @@ async def update_consultation_status(
     status: str,
 ) -> None:
     """Update consultation status."""
-    async with await get_db() as db:
-        await db.execute(
+    loop = asyncio.get_event_loop()
+
+    def _update():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
             "UPDATE consultations SET status = ? WHERE id = ?",
             (status, consultation_id),
         )
-        await db.commit()
+        conn.commit()
+
+    await loop.run_in_executor(_executor, _update)
 
 
 async def update_consultation_erp_ids(
@@ -137,8 +183,12 @@ async def update_consultation_erp_ids(
     integrated_at: str,
 ) -> None:
     """Update ERP IDs after integration."""
-    async with await get_db() as db:
-        await db.execute(
+    loop = asyncio.get_event_loop()
+
+    def _update():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
             """
             UPDATE consultations
             SET erp_client_id = ?, erp_animal_id = ?, erp_consult_id = ?,
@@ -147,7 +197,9 @@ async def update_consultation_erp_ids(
             """,
             (erp_client_id, erp_animal_id, erp_consult_id, integrated_at, "integrated", consultation_id),
         )
-        await db.commit()
+        conn.commit()
+
+    await loop.run_in_executor(_executor, _update)
 
 
 async def update_files_local(
@@ -156,24 +208,15 @@ async def update_files_local(
 ) -> None:
     """Update local file paths."""
     files_json = json.dumps(files)
-    async with await get_db() as db:
-        await db.execute(
+    loop = asyncio.get_event_loop()
+
+    def _update():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
             "UPDATE consultations SET files_local = ? WHERE id = ?",
             (files_json, consultation_id),
         )
-        await db.commit()
+        conn.commit()
 
-
-def _row_to_dict(row: Any, description: Any) -> dict:
-    """Convert database row to dict.
-
-    Args:
-        row: Database row
-        description: Column descriptions from cursor
-
-    Returns:
-        Dictionary representation of row
-    """
-    if not row:
-        return {}
-    return {description[i][0]: row[i] for i in range(len(row))}
+    await loop.run_in_executor(_executor, _update)
