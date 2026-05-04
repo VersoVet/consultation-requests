@@ -16,7 +16,10 @@ DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 async def init_db() -> None:
     """Initialize SQLite database with schema."""
-    async with aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False) as db:
+    async with aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False, timeout=10.0) as db:
+        # Disable features that may create background threads
+        await db.execute("PRAGMA journal_mode = OFF")
+        await db.execute("PRAGMA synchronous = NORMAL")
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS consultations (
