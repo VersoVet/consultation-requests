@@ -1,13 +1,15 @@
 """Main FastAPI application for consultation-requests skill."""
 
-from __future__ import annotations
-
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from src.config import PORT, SERVICE_NAME, VERSION, logger
 from src.core.database import init_db
@@ -120,7 +122,7 @@ async def download_file(
     uuid: str,
     filename: str,
     token: str,
-) -> FileResponse:
+) -> "FileResponse":
     """Download consultation document (secure token-based access).
 
     Args:
