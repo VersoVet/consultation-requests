@@ -1,0 +1,122 @@
+{
+  "name": "consultation-requests",
+  "version": "1.0.0",
+  "core": {
+    "display_name": "Consultation Requests",
+    "description": "Centralized management of consultation requests from verso-vet.com - receive, store, and integrate with VetoPartner ERP",
+    "category": "healthcare",
+    "routing": {
+      "host": "10.0.0.44",
+      "port": 8092,
+      "protocol": "http",
+      "base_path": "/"
+    },
+    "health": {
+      "endpoint": "/health",
+      "interval": 30
+    },
+    "api": {
+      "base_path": "/",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "description": "Health check"
+        },
+        {
+          "method": "GET",
+          "path": "/dashboard",
+          "description": "Dashboard HTML"
+        },
+        {
+          "method": "POST",
+          "path": "/consultations/submit",
+          "description": "Receive consultation request from WordPress (webhook)"
+        },
+        {
+          "method": "GET",
+          "path": "/consultations",
+          "description": "List all consultation requests"
+        },
+        {
+          "method": "GET",
+          "path": "/consultations/{id}",
+          "description": "Get consultation request details"
+        },
+        {
+          "method": "PATCH",
+          "path": "/consultations/{id}/status",
+          "description": "Update consultation status"
+        },
+        {
+          "method": "PATCH",
+          "path": "/consultations/{id}/integrate",
+          "description": "Integrate consultation into VetoPartner ERP"
+        },
+        {
+          "method": "GET",
+          "path": "/files/{uuid}/{filename}",
+          "description": "Download consultation document (secure token required)"
+        }
+      ]
+    },
+    "dashboard": {
+      "enabled": true,
+      "page": "/dashboard",
+      "icon": "stethoscope",
+      "color": "#2196F3",
+      "category": "healthcare"
+    },
+    "brain_area": "cerebellum"
+  },
+  "heart": {
+    "deployment": {
+      "target_host": "10.0.0.44",
+      "host_name": "OnyxSoma",
+      "platform": "linux"
+    },
+    "lifecycle": {
+      "run_mode": "service",
+      "start_command": "python -m src.main",
+      "restart_policy": "on-failure",
+      "auto_start": true
+    },
+    "health": {
+      "check_endpoint": "/health",
+      "check_interval_sec": 30
+    },
+    "secrets": [
+      "consultation_webhook_secret",
+      "consultation_file_secret",
+      "erp_api_key",
+      "email_config"
+    ]
+  },
+  "forge": {
+    "type": "python",
+    "python": {
+      "version": "3.12",
+      "src_dir": "src",
+      "entry_point": "main.py"
+    },
+    "server": {
+      "enabled": true,
+      "protocol": "fastapi",
+      "port": 8092
+    },
+    "development": {
+      "dev_platform": "OnyxDendrite",
+      "test_platform": "OnyxDendrite",
+      "dev_status": "in_development",
+      "progress_percent": 15
+    },
+    "repository": "VersoVet/consultation-requests",
+    "author": "Onyx Team"
+  },
+  "integration": {
+    "redis": {
+      "publish_status": true,
+      "channel": "onyx:skill:status"
+    }
+  }
+}
