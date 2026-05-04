@@ -27,3 +27,10 @@ data/files/
 *.sqlite
 *.sqlite3
 *.db
+
+# Security - CRITICAL
+*.key
+*.pem
+credentials*
+secrets*
+.vault_token

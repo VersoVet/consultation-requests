@@ -1,12 +1,11 @@
 """Pydantic models for consultation-requests skill."""
 
-from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class ConsultationStatus(str, Enum):
+class ConsultationStatus(StrEnum):
     """Consultation request status."""
 
     pending = "pending"
@@ -42,9 +41,7 @@ class AnimalInfo(BaseModel):
     espece: str = Field(..., description="Espèce (Chien, Chat, Lapin, NAC, etc.)")
     race: str | None = Field(None, description="Race")
     sexe: str | None = Field(None, description="Sexe (M, F, Castré, Stérilisé)")
-    date_naissance: str | None = Field(
-        None, description="Date de naissance (YYYY-MM-DD)"
-    )
+    date_naissance: str | None = Field(None, description="Date de naissance (YYYY-MM-DD)")
     puce: str | None = Field(None, description="Numéro de puce")
     poids: float | None = Field(None, description="Poids en kg")
 
@@ -64,9 +61,7 @@ class ConsultationRequest(BaseModel):
     )
     urgence: bool = Field(False, description="Est-ce une demande urgente?")
     traitements_en_cours: str | None = Field(None, description="Traitements actuels")
-    fichiers: list[str] = Field(
-        default_factory=list, description="URLs des fichiers uploadés"
-    )
+    fichiers: list[str] = Field(default_factory=list, description="URLs des fichiers uploadés")
 
 
 class ConsultationResponse(BaseModel):

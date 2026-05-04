@@ -1,16 +1,15 @@
 """Dashboard routes."""
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
-
-from src.config import logger
 from pathlib import Path
+
+from fastapi import APIRouter
+from fastapi.responses import FileResponse, HTMLResponse
 
 router = APIRouter(tags=["dashboard"])
 
 
 @router.get("/dashboard")
-async def get_dashboard() -> FileResponse:
+async def get_dashboard() -> FileResponse | HTMLResponse:
     """Serve dashboard HTML."""
     dashboard_file = Path(__file__).parent.parent.parent.parent / "static" / "dashboard.html"
 
@@ -46,7 +45,4 @@ async def get_dashboard() -> FileResponse:
     </body>
     </html>
     """
-    return FileResponse(
-        content=html,
-        media_type="text/html",
-    )
+    return HTMLResponse(content=html)

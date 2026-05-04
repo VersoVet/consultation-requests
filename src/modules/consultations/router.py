@@ -1,7 +1,7 @@
 """Consultation request routes."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -13,7 +13,7 @@ from src.core.database import (
     list_consultations,
     update_consultation_status,
 )
-from src.core.models import ConsultationRequest, ConsultationResponse, ConsultationStatus
+from src.core.models import ConsultationRequest, ConsultationStatus
 
 router = APIRouter(prefix="/consultations", tags=["consultations"])
 
@@ -30,7 +30,7 @@ async def submit_consultation(request: ConsultationRequest) -> dict:
     """
     try:
         # Validate HMAC in production (simplified for now)
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
         # Store in database
         data_json = request.model_dump_json()
@@ -75,9 +75,7 @@ async def list_consultations_endpoint(
         List of consultations
     """
     try:
-        consultations = await list_consultations(
-            status=status, limit=limit, offset=offset
-        )
+        consultations = await list_consultations(status=status, limit=limit, offset=offset)
         return {
             "count": len(consultations),
             "limit": limit,
@@ -109,7 +107,7 @@ async def get_consultation_detail(consultation_id: int) -> dict:
         if "data_json" in consultation:
             try:
                 consultation["data"] = json.loads(consultation["data_json"])
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
 
         return consultation
@@ -145,6 +143,8 @@ async def update_status(
 
         await update_consultation_status(consultation_id, status)
         consultation = await get_consultation(consultation_id)
+        if not consultation:
+            raise HTTPException(status_code=404, detail="Consultation not found")
 
         logger.info(f"Consultation {consultation_id} status updated to {status}")
         return consultation

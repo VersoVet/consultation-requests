@@ -1,9 +1,10 @@
 """SQLite database setup and management."""
 
-import aiosqlite
 import json
 import logging
-from pathlib import Path
+from typing import Any
+
+import aiosqlite
 
 from src.config import DATABASE_PATH
 
@@ -69,19 +70,17 @@ async def create_consultation(
             (uuid, submitted_at, submitter_type, data_json, "pending"),
         )
         await db.commit()
-        return cursor.lastrowid
+        return int(cursor.lastrowid or 0)
 
 
 async def get_consultation(consultation_id: int) -> dict | None:
     """Get consultation by ID."""
     async with await get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM consultations WHERE id = ?", (consultation_id,)
-        )
+        cursor = await db.execute("SELECT * FROM consultations WHERE id = ?", (consultation_id,))
         row = await cursor.fetchone()
         if not row:
             return None
-        return _row_to_dict(row, await cursor.description)
+        return _row_to_dict(row, cursor.description)
 
 
 async def list_consultations(
@@ -111,7 +110,7 @@ async def list_consultations(
                 (limit, offset),
             )
         rows = await cursor.fetchall()
-        return [_row_to_dict(row, await cursor.description) for row in rows]
+        return [_row_to_dict(row, cursor.description) for row in rows]
 
 
 async def update_consultation_status(
@@ -162,8 +161,16 @@ async def update_files_local(
         await db.commit()
 
 
-def _row_to_dict(row, description) -> dict:
-    """Convert database row to dict."""
+def _row_to_dict(row: Any, description: Any) -> dict:
+    """Convert database row to dict.
+
+    Args:
+        row: Database row
+        description: Column descriptions from cursor
+
+    Returns:
+        Dictionary representation of row
+    """
     if not row:
         return {}
     return {description[i][0]: row[i] for i in range(len(row))}

@@ -1,14 +1,12 @@
 """Main FastAPI application for consultation-requests skill."""
 
-import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.config import SERVICE_NAME, VERSION, PORT, logger
+from src.config import PORT, SERVICE_NAME, VERSION, logger
 from src.core.database import init_db
 from src.core.models import HealthResponse
 from src.modules.consultations import router as consultation_router
@@ -91,7 +89,7 @@ async def health() -> HealthResponse:
         status="ok",
         service=SERVICE_NAME,
         version=VERSION,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
 
