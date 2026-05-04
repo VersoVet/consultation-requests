@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from src.config import logger
 from src.core.database import (
@@ -14,45 +14,82 @@ from src.core.database import (
     update_consultation_status,
 )
 from src.core.models import ConsultationRequest, ConsultationStatus
+from src.modules.consultations.service import (
+    process_consultation_submission,
+    validate_hmac_signature,
+)
 
 router = APIRouter(prefix="/consultations", tags=["consultations"])
 
 
 @router.post("/submit", status_code=201)
-async def submit_consultation(request: ConsultationRequest) -> dict:
+async def submit_consultation(
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict:
     """Receive consultation request from WordPress (webhook).
 
+    Validates HMAC signature, stores in DB, processes files/email asynchronously.
+
     Args:
-        request: ConsultationRequest with all data
+        request: FastAPI Request object (for raw body)
+        background_tasks: FastAPI background tasks
 
     Returns:
         Response with created consultation ID
     """
     try:
-        # Validate HMAC in production (simplified for now)
-        timestamp = datetime.now(UTC).isoformat()
+        # Get raw body for HMAC validation
+        raw_body = await request.body()
+        body_str = raw_body.decode("utf-8")
+
+        # Validate HMAC signature
+        signature_header = request.headers.get("X-Verso-Signature", "")
+        if not signature_header:
+            logger.warning("Missing X-Verso-Signature header")
+            raise HTTPException(status_code=401, detail="Missing signature")
+
+        is_valid = await validate_hmac_signature(body_str, signature_header)
+        if not is_valid:
+            client_host = request.client.host if request.client else "unknown"
+            logger.warning(f"Invalid HMAC signature from {client_host}")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+        # Parse JSON
+        consultation_data = json.loads(body_str)
+        consultation_request = ConsultationRequest(**consultation_data)
 
         # Store in database
-        data_json = request.model_dump_json()
+        timestamp = datetime.now(UTC).isoformat()
+        data_json = consultation_request.model_dump_json()
         consultation_id = await create_consultation(
-            uuid=request.uuid,
+            uuid=consultation_request.uuid,
             submitted_at=timestamp,
-            submitter_type=request.submitter_type,
+            submitter_type=consultation_request.submitter_type,
             data_json=data_json,
         )
 
         logger.info(
-            f"Consultation received: id={consultation_id}, uuid={request.uuid}, "
-            f"animal={request.animal.nom}, submitter={request.submitter_type}"
+            f"Consultation received: id={consultation_id}, uuid={consultation_request.uuid}, "
+            f"animal={consultation_request.animal.nom}, submitter={consultation_request.submitter_type}"
+        )
+
+        # Schedule async processing (files + email)
+        background_tasks.add_task(
+            process_consultation_submission,
+            consultation_request,
+            consultation_id,
         )
 
         return {
             "success": True,
             "id": consultation_id,
-            "uuid": request.uuid,
+            "uuid": consultation_request.uuid,
             "status": "pending",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error submitting consultation: {e}")
         raise HTTPException(status_code=400, detail=str(e))
