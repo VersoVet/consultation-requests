@@ -183,7 +183,13 @@
                 const response = await fetch(API_BASE);
                 const data = await response.json();
 
-                allConsultations = data.consultations || [];
+                allConsultations = (data.consultations || []).map(c => {
+                    // Ensure data is parsed if it's a string
+                    if (typeof c.data === 'string') {
+                        c.data = JSON.parse(c.data);
+                    }
+                    return c;
+                });
                 filterConsultations();
                 updateStats();
 
@@ -230,7 +236,12 @@
             noResults.style.display = 'none';
             tbody.innerHTML = consultations.map(c => {
                 const animal = c.data?.animal?.nom || 'Unknown';
-                const owner = `${c.data?.owner?.nom || ''} ${c.data?.owner?.prenom || ''}`.trim();
+                let owner = '-';
+                if (c.data?.owner) {
+                    owner = `${c.data.owner.nom || ''} ${c.data.owner.prenom || ''}`.trim();
+                } else if (c.data?.vet) {
+                    owner = `${c.data.vet.nom || ''} ${c.data.vet.prenom || ''}`.trim();
+                }
                 const specialty = c.data?.specialite || '-';
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
@@ -298,10 +309,45 @@
             }
 
             document.getElementById('detailTitle').textContent = `Consultation #${id} - ${animal.nom || 'Unknown'}`;
+
+            // Build contact section based on submitter type
+            let contactHtml = '';
+            if (data.submitter_type === 'vet' && vet) {
+                contactHtml = `
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-hospital"></i> Veterinary Referrer</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Name:</dt>
+                            <dd class="col-sm-8">${vet.nom || '-'} ${vet.prenom || ''}</dd>
+                            <dt class="col-sm-4">Clinic:</dt>
+                            <dd class="col-sm-8">${vet.clinique || '-'}</dd>
+                            <dt class="col-sm-4">Email:</dt>
+                            <dd class="col-sm-8"><a href="mailto:${vet.email}">${vet.email || '-'}</a></dd>
+                            <dt class="col-sm-4">Phone:</dt>
+                            <dd class="col-sm-8">${vet.telephone || '-'}</dd>
+                        </dl>
+                    </div>
+                `;
+            } else {
+                contactHtml = `
+                    <div class="col-md-6">
+                        <h6><i class="bi bi-person"></i> Owner</h6>
+                        <dl class="row">
+                            <dt class="col-sm-4">Name:</dt>
+                            <dd class="col-sm-8">${owner && owner.nom ? owner.nom + ' ' + (owner.prenom || '') : '-'}</dd>
+                            <dt class="col-sm-4">Email:</dt>
+                            <dd class="col-sm-8">${owner && owner.email ? `<a href="mailto:${owner.email}">${owner.email}</a>` : '-'}</dd>
+                            <dt class="col-sm-4">Phone:</dt>
+                            <dd class="col-sm-8">${owner && owner.telephone ? owner.telephone : '-'}</dd>
+                        </dl>
+                    </div>
+                `;
+            }
+
             document.getElementById('detailBody').innerHTML = `
                 <div class="row">
                     <div class="col-md-6">
-                        <h6>Patient</h6>
+                        <h6><i class="bi bi-paw"></i> Patient</h6>
                         <dl class="row">
                             <dt class="col-sm-4">Name:</dt>
                             <dd class="col-sm-8">${animal.nom || '-'}</dd>
@@ -313,17 +359,7 @@
                             <dd class="col-sm-8">${animal.sexe || '-'}</dd>
                         </dl>
                     </div>
-                    <div class="col-md-6">
-                        <h6>Owner</h6>
-                        <dl class="row">
-                            <dt class="col-sm-4">Name:</dt>
-                            <dd class="col-sm-8">${owner.nom || '-'} ${owner.prenom || ''}</dd>
-                            <dt class="col-sm-4">Email:</dt>
-                            <dd class="col-sm-8"><a href="mailto:${owner.email}">${owner.email || '-'}</a></dd>
-                            <dt class="col-sm-4">Phone:</dt>
-                            <dd class="col-sm-8">${owner.telephone || '-'}</dd>
-                        </dl>
-                    </div>
+                    ${contactHtml}
                 </div>
 
                 <hr>

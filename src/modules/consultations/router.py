@@ -114,6 +114,15 @@ async def list_consultations_endpoint(
     """
     try:
         consultations = await list_consultations(status=status, limit=limit, offset=offset)
+
+        # Parse data_json for each consultation
+        for consultation in consultations:
+            if "data_json" in consultation:
+                try:
+                    consultation["data"] = json.loads(consultation["data_json"])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
         return {
             "count": len(consultations),
             "limit": limit,
