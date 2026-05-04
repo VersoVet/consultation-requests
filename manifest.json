@@ -1,6 +1,6 @@
 {
   "name": "consultation-requests",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "core": {
     "display_name": "Consultation Requests",
     "description": "Centralized management of consultation requests from verso-vet.com - receive, store, and integrate with VetoPartner ERP",
@@ -117,8 +117,8 @@
     "development": {
       "dev_platform": "dendrite",
       "test_platform": "dendrite",
-      "dev_status": "in_development",
-      "progress_percent": 15
+      "dev_status": "deployed",
+      "progress_percent": 100
     },
     "repository": "VersoVet/consultation-requests",
     "author": "Onyx Team"
