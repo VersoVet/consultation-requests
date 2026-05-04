@@ -33,12 +33,6 @@ def test_erp_connector_error_raises() -> None:
 @pytest.mark.asyncio
 async def test_search_clients_empty_result() -> None:
     """Test search_clients with no results."""
-    from unittest.mock import AsyncMock, patch
-
-    with patch(
-        "src.modules.consultations.erp.httpx.AsyncClient.get",
-        new_callable=AsyncMock,
-    ) as mock_get:
-        # This would require proper mocking of httpx
-        # Skipping for now as it needs a mock server
-        pass
+    # This would require proper mocking of httpx
+    # Skipping for now as it needs a mock server
+    pytest.skip("Requires mock HTTP server")
