@@ -15,6 +15,11 @@
       "endpoint": "/health",
       "interval": 30
     },
+    "cron": {
+      "enabled": true,
+      "endpoint": "/cron",
+      "interval_sec": 60
+    },
     "api": {
       "base_path": "/",
       "endpoints": [
@@ -22,6 +27,11 @@
           "method": "GET",
           "path": "/health",
           "description": "Health check"
+        },
+        {
+          "method": "GET",
+          "path": "/cron",
+          "description": "Periodic task - publish WORKING status"
         },
         {
           "method": "GET",

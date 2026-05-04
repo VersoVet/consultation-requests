@@ -93,6 +93,24 @@ async def health() -> HealthResponse:
     )
 
 
+@app.get("/cron")
+async def cron() -> dict:
+    """Periodic task - publish WORKING status.
+
+    Called by Onyx scheduler every minute to report processing status.
+    """
+    if HAS_SDK and onyx:
+        try:
+            from onyx_sdk import SkillStatus
+
+            onyx.status(SkillStatus.WORKING)
+            logger.debug("Cron: WORKING status published")
+        except Exception as e:
+            logger.warning(f"Could not publish WORKING status: {e}")
+
+    return {"status": "cron_executed"}
+
+
 @app.get("/")
 async def root():
     """Root endpoint - redirect to dashboard."""
