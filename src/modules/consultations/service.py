@@ -154,6 +154,25 @@ def build_notification_email(
     Returns:
         Tuple of (plain_text_body, html_body)
     """
+    # Build owner/vet section based on submitter_type
+    if request.submitter_type == "vet" and request.vet:
+        contact_section = f"""
+--- Référant Vétérinaire ---
+Nom: {request.vet.nom} {request.vet.prenom}
+Clinique: {request.vet.clinique}
+Email: {request.vet.email}
+Tél: {request.vet.telephone}
+"""
+    elif request.owner:
+        contact_section = f"""
+--- Propriétaire ---
+Nom: {request.owner.nom} {request.owner.prenom}
+Email: {request.owner.email or "N/A"}
+Tél: {request.owner.telephone or "N/A"}
+"""
+    else:
+        contact_section = "--- Contact info non disponible ---\n"
+
     # Plain text
     text_body = f"""
 Nouvelle demande de consultation reçue
@@ -167,11 +186,7 @@ Nom: {request.animal.nom}
 Espèce: {request.animal.espece}
 Race: {request.animal.race or "N/A"}
 
---- Propriétaire ---
-Nom: {request.owner.nom} {request.owner.prenom}
-Email: {request.owner.email or "N/A"}
-Tél: {request.owner.telephone or "N/A"}
-
+{contact_section}
 --- Motif ---
 Spécialité: {request.specialite}
 Urgence: {"Oui" if request.urgence else "Non"}
@@ -218,10 +233,14 @@ Accédez au dashboard: http://10.0.0.44:8092/dashboard
         </div>
 
         <div class="section">
-            <h3>👤 Propriétaire</h3>
-            <div class="field"><span class="label">Nom:</span> {request.owner.nom} {request.owner.prenom}</div>
-            <div class="field"><span class="label">Email:</span> {request.owner.email or "N/A"}</div>
-            <div class="field"><span class="label">Tél:</span> {request.owner.telephone or "N/A"}</div>
+            {"<h3>🩺 Référant Vétérinaire</h3>" if request.submitter_type == "vet" else "<h3>👤 Propriétaire</h3>"}
+            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.vet.nom} {request.vet.prenom}</div>" if request.vet else ""}
+            {f"<div class=\"field\"><span class=\"label\">Clinique:</span> {request.vet.clinique}</div>" if request.vet else ""}
+            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.vet.email}</div>" if request.vet else ""}
+            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.vet.telephone}</div>" if request.vet else ""}
+            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.owner.nom} {request.owner.prenom}</div>" if request.owner else ""}
+            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.owner.email or 'N/A'}</div>" if request.owner else ""}
+            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.owner.telephone or 'N/A'}</div>" if request.owner else ""}
         </div>
 
         <div class="section">

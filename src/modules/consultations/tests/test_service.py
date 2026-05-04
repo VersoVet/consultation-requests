@@ -97,4 +97,5 @@ def test_sample_consultation_model(sample_consultation: ConsultationRequest) -> 
     assert sample_consultation.animal.nom == "Rex"
     assert sample_consultation.specialite == "imagerie"
     assert sample_consultation.submitter_type == "vet"
+    assert sample_consultation.owner is not None
     assert sample_consultation.owner.nom == "Martin"
