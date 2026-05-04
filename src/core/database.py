@@ -16,7 +16,7 @@ DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 async def init_db() -> None:
     """Initialize SQLite database with schema."""
-    async with aiosqlite.connect(str(DATABASE_PATH)) as db:
+    async with aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False) as db:
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS consultations (
@@ -41,7 +41,7 @@ async def init_db() -> None:
 
 async def get_db() -> aiosqlite.Connection:
     """Get database connection."""
-    return await aiosqlite.connect(str(DATABASE_PATH))
+    return await aiosqlite.connect(str(DATABASE_PATH), check_same_thread=False)
 
 
 async def create_consultation(
