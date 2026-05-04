@@ -10,6 +10,7 @@ import httpx
 from src.config import DATABASE_PATH, logger
 from src.core.alerting import send_email
 from src.core.database import (
+    update_consultation_erp_ids,
     update_consultation_status,
     update_files_local,
 )
@@ -280,6 +281,139 @@ def get_file_path(uuid: str, filename: str) -> Path | None:
         return file_path
 
     return None
+
+
+async def integrate_consultation_with_erp(
+    consultation_id: int,
+    consultation_data: dict,
+) -> dict:
+    """Integrate consultation into VetoPartner ERP.
+
+    Orchestrates: search/create client, search/create animal, create consultation, upload files.
+
+    Args:
+        consultation_id: Database consultation ID
+        consultation_data: Parsed consultation request data
+
+    Returns:
+        Dict with erp_client_id, erp_animal_id, erp_consult_id, success
+
+    Raises:
+        Exception: If critical operation fails
+    """
+    from src.modules.consultations.erp import (
+        create_animal,
+        create_client,
+        create_consultation,
+        search_animals,
+        search_clients,
+        upload_document,
+    )
+
+    try:
+        logger.info(f"Starting ERP integration for consultation {consultation_id}")
+
+        # Parse consultation data
+        owner = consultation_data.get("owner", {})
+        animal = consultation_data.get("animal", {})
+
+        # Step 1: Search for existing client
+        client_search = f"{owner.get('nom', '')} {owner.get('prenom', '')}".strip()
+        logger.info(f"Searching for client: {client_search}")
+
+        existing_clients = await search_clients(client_search)
+        erp_client_id: int | None = None
+
+        if existing_clients:
+            erp_client_id = existing_clients[0].id
+            logger.info(f"Found existing client: {erp_client_id}")
+        else:
+            # Step 2: Create new client
+            logger.info(f"Creating new client: {client_search}")
+            erp_client_id = await create_client(
+                nom=owner.get("nom", "Unknown"),
+                prenom=owner.get("prenom"),
+                email=owner.get("email"),
+                telephone=owner.get("telephone"),
+            )
+            logger.info(f"Created client: {erp_client_id}")
+
+        # Step 3: Search for existing animal
+        animal_name = animal.get("nom", "Unknown")
+        logger.info(f"Searching for animal: {animal_name} (client {erp_client_id})")
+
+        existing_animals = await search_animals(erp_client_id, animal_name)
+        erp_animal_id: int | None = None
+
+        if existing_animals:
+            erp_animal_id = existing_animals[0].id
+            logger.info(f"Found existing animal: {erp_animal_id}")
+        else:
+            # Step 4: Create new animal
+            logger.info(f"Creating new animal: {animal_name}")
+            erp_animal_id = await create_animal(
+                client_id=erp_client_id,
+                nom=animal_name,
+                espece=animal.get("espece", "Unknown"),
+                race=animal.get("race"),
+                sexe=animal.get("sexe"),
+                date_naissance=animal.get("date_naissance"),
+                puce=animal.get("puce"),
+                poids=animal.get("poids"),
+            )
+            logger.info(f"Created animal: {erp_animal_id}")
+
+        # Step 5: Create consultation in ERP
+        logger.info(f"Creating consultation in ERP (animal {erp_animal_id})")
+        erp_consult_id = await create_consultation(
+            animal_id=erp_animal_id,
+            motif=consultation_data.get("motif", ""),
+            specialite=consultation_data.get("specialite"),
+            urgence=consultation_data.get("urgence", False),
+            traitements_en_cours=consultation_data.get("traitements_en_cours"),
+        )
+        logger.info(f"Created consultation: {erp_consult_id}")
+
+        # Step 6: Upload documents (best-effort, don't fail if some uploads fail)
+        files_local = consultation_data.get("files_local", [])
+        if files_local:
+            logger.info(f"Uploading {len(files_local)} documents")
+            for local_path in files_local:
+                try:
+                    # local_path is like "uuid/filename"
+                    file_full_path = FILES_DIR / local_path
+                    filename = local_path.split("/")[-1]
+                    await upload_document(erp_animal_id, str(file_full_path), filename)
+                    logger.info(f"Uploaded: {filename}")
+                except Exception as e:
+                    logger.warning(f"Failed to upload {local_path}: {e}")
+                    # Continue with other files
+
+        # Step 7: Update database
+        from datetime import UTC, datetime
+
+        timestamp = datetime.now(UTC).isoformat()
+        await update_consultation_erp_ids(
+            consultation_id,
+            erp_client_id,
+            erp_animal_id,
+            erp_consult_id,
+            timestamp,
+        )
+        logger.info(f"Consultation {consultation_id} integrated successfully")
+
+        return {
+            "success": True,
+            "erp_client_id": erp_client_id,
+            "erp_animal_id": erp_animal_id,
+            "erp_consult_id": erp_consult_id,
+        }
+
+    except Exception as e:
+        logger.error(f"Error integrating consultation {consultation_id}: {e}")
+        # Mark as rejected
+        await update_consultation_status(consultation_id, "rejected")
+        raise
 
 
 async def process_consultation_submission(

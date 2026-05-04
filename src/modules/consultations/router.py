@@ -15,6 +15,7 @@ from src.core.database import (
 )
 from src.core.models import ConsultationRequest, ConsultationStatus
 from src.modules.consultations.service import (
+    integrate_consultation_with_erp,
     process_consultation_submission,
     validate_hmac_signature,
 )
@@ -196,46 +197,58 @@ async def update_status(
 @router.patch("/{consultation_id}/integrate")
 async def integrate_consultation(
     consultation_id: int,
-    erp_client_id: int | None = None,
-    erp_animal_id: int | None = None,
+    background_tasks: BackgroundTasks,
 ) -> dict:
     """Integrate consultation into VetoPartner ERP.
 
-    This is a placeholder endpoint. In production, it will:
+    Orchestrates:
     1. Search for or create client in VetoPartner
     2. Search for or create animal in VetoPartner
     3. Create consultation in VetoPartner
     4. Upload documents
 
+    Processed asynchronously.
+
     Args:
         consultation_id: ID of consultation to integrate
-        erp_client_id: Optional existing client ID in VetoPartner
-        erp_animal_id: Optional existing animal ID in VetoPartner
+        background_tasks: FastAPI background tasks
 
     Returns:
-        Integration result
+        Integration scheduled response
     """
     try:
         consultation = await get_consultation(consultation_id)
         if not consultation:
             raise HTTPException(status_code=404, detail="Consultation not found")
 
-        # Placeholder - full implementation in service.py
-        logger.info(
-            f"Integration initiated for consultation {consultation_id}, "
-            f"erp_client_id={erp_client_id}, erp_animal_id={erp_animal_id}"
+        # Parse consultation data
+        import json
+
+        if "data_json" in consultation:
+            try:
+                consultation_data = json.loads(consultation["data_json"])
+            except (json.JSONDecodeError, ValueError):
+                consultation_data = {}
+        else:
+            consultation_data = {}
+
+        # Schedule async integration
+        background_tasks.add_task(
+            integrate_consultation_with_erp,
+            consultation_id,
+            consultation_data,
         )
+
+        logger.info(f"ERP integration scheduled for consultation {consultation_id}")
 
         return {
             "success": True,
             "id": consultation_id,
             "message": "Integration scheduled",
-            "erp_client_id": erp_client_id,
-            "erp_animal_id": erp_animal_id,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error integrating consultation: {e}")
+        logger.error(f"Error scheduling integration: {e}")
         raise HTTPException(status_code=500, detail=str(e))
