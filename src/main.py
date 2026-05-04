@@ -1,15 +1,19 @@
 """Main FastAPI application for consultation-requests skill."""
 
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.config import PORT, SERVICE_NAME, VERSION, logger
 from src.core.database import init_db
 from src.core.models import HealthResponse
 from src.modules.consultations import router as consultation_router
+from src.modules.consultations.service import get_file_path, validate_file_token
 from src.modules.dashboard import router as dashboard_router
 
 # OnyxSDK - graceful fallback
@@ -109,6 +113,47 @@ async def cron() -> dict:
             logger.warning(f"Could not publish WORKING status: {e}")
 
     return {"status": "cron_executed"}
+
+
+@app.get("/files/{uuid}/{filename}")
+async def download_file(
+    uuid: str,
+    filename: str,
+    token: str,
+) -> FileResponse:
+    """Download consultation document (secure token-based access).
+
+    Args:
+        uuid: Consultation UUID
+        filename: File name
+        token: HMAC token for security
+
+    Returns:
+        File download
+    """
+    try:
+        # Validate token
+        is_valid = await validate_file_token(f"{uuid}/{filename}", token)
+        if not is_valid:
+            logger.warning(f"Invalid file token: {uuid}/{filename}")
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Get file path
+        file_path = get_file_path(uuid, filename)
+        if not file_path:
+            logger.warning(f"File not found: {uuid}/{filename}")
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Log access
+        logger.info(f"File download: {uuid}/{filename}")
+
+        return FileResponse(path=file_path)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/")

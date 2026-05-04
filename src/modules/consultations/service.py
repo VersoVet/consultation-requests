@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
@@ -44,6 +45,24 @@ async def validate_hmac_signature(
         return hmac.compare_digest(signature_header, expected_signature)
     except Exception as e:
         logger.warning(f"HMAC validation error: {e}")
+        return False
+
+
+async def validate_file_token(filename: str, provided_token: str) -> bool:
+    """Validate HMAC token for file download.
+
+    Args:
+        filename: Filename to validate
+        provided_token: Token from user
+
+    Returns:
+        True if token is valid
+    """
+    try:
+        expected_token = await generate_file_token(filename)
+        return hmac.compare_digest(provided_token, expected_token)
+    except Exception as e:
+        logger.warning(f"Token validation error: {e}")
         return False
 
 
@@ -236,6 +255,31 @@ Accédez au dashboard: http://10.0.0.44:8092/dashboard
 """
 
     return text_body, html_body
+
+
+def get_file_path(uuid: str, filename: str) -> Path | None:
+    """Get local file path for a consultation file.
+
+    Args:
+        uuid: Consultation UUID
+        filename: File name
+
+    Returns:
+        Path to file if it exists, None otherwise
+    """
+    file_path = FILES_DIR / uuid / filename
+
+    # Security: ensure the path is within FILES_DIR (prevent directory traversal)
+    try:
+        file_path.resolve().relative_to(FILES_DIR.resolve())
+    except ValueError:
+        logger.error(f"Attempted directory traversal: {file_path}")
+        return None
+
+    if file_path.exists() and file_path.is_file():
+        return file_path
+
+    return None
 
 
 async def process_consultation_submission(
