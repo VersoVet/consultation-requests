@@ -5,7 +5,6 @@ import json
 import logging
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 from src.config import DATABASE_PATH
 
