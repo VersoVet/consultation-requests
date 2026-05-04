@@ -108,7 +108,6 @@
                                 <th>ID</th>
                                 <th>Animal</th>
                                 <th>Owner</th>
-                                <th>Specialty</th>
                                 <th>Status</th>
                                 <th>Submitted</th>
                                 <th>Actions</th>
@@ -242,7 +241,6 @@
                 } else if (c.data?.vet) {
                     owner = `${c.data.vet.nom || ''} ${c.data.vet.prenom || ''}`.trim();
                 }
-                const specialty = c.data?.specialite || '-';
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
 
@@ -251,7 +249,6 @@
                         <td><strong>#${c.id}</strong></td>
                         <td>${animal}</td>
                         <td>${owner}</td>
-                        <td>${specialty}</td>
                         <td>${statusBadge}</td>
                         <td class="small">${submitted}</td>
                         <td>
@@ -368,12 +365,10 @@
                     <div class="col-md-6">
                         <h6>Consultation</h6>
                         <dl class="row">
-                            <dt class="col-sm-4">Specialty:</dt>
-                            <dd class="col-sm-8">${data.specialite || '-'}</dd>
-                            <dt class="col-sm-4">Urgent:</dt>
-                            <dd class="col-sm-8">${data.urgence ? '<span class="badge bg-danger">YES</span>' : 'No'}</dd>
                             <dt class="col-sm-4">Status:</dt>
                             <dd class="col-sm-8">${getStatusBadge(consultation.status)}</dd>
+                            <dt class="col-sm-4">Date:</dt>
+                            <dd class="col-sm-8">${new Date(consultation.submitted_at).toLocaleDateString('fr-FR')}</dd>
                         </dl>
                     </div>
                     <div class="col-md-6">
