@@ -1,101 +1,24 @@
-"""Consultation request routes."""
+"""Consultation request routes - SIMPLIFIED (IMAP-based)."""
 
 import json
-from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 
 from src.config import logger
 from src.core.database import (
-    create_consultation,
     get_consultation,
     list_consultations,
     update_consultation_status,
 )
-from src.core.imap_monitor import monitor_imap
-from src.core.models import ConsultationRequest, ConsultationStatus
-from src.modules.consultations.security import validate_hmac_signature
-from src.modules.consultations.service import (
-    integrate_consultation_with_erp,
-    process_consultation_submission,
-    pull_consultations_from_wordpress,
+from src.core.models import ConsultationStatus
+from src.modules.consultations.integration import (
+    create_new_client_and_animal,
+    integrate_with_erp,
 )
+from src.modules.consultations.search import search_animals_in_erp
 
 router = APIRouter(prefix="/consultations", tags=["consultations"])
-
-
-@router.post("/submit", status_code=201)
-async def submit_consultation(
-    request: Request,
-    background_tasks: BackgroundTasks,
-) -> dict:
-    """Receive consultation request from WordPress (webhook).
-
-    Validates HMAC signature, stores in DB, processes files/email asynchronously.
-
-    Args:
-        request: FastAPI Request object (for raw body)
-        background_tasks: FastAPI background tasks
-
-    Returns:
-        Response with created consultation ID
-    """
-    try:
-        # Get raw body for HMAC validation
-        raw_body = await request.body()
-        body_str = raw_body.decode("utf-8")
-
-        # Validate HMAC signature
-        signature_header = request.headers.get("X-Verso-Signature", "")
-        if not signature_header:
-            logger.warning("Missing X-Verso-Signature header")
-            raise HTTPException(status_code=401, detail="Missing signature")
-
-        is_valid = await validate_hmac_signature(body_str, signature_header)
-        if not is_valid:
-            client_host = request.client.host if request.client else "unknown"
-            logger.warning(f"Invalid HMAC signature from {client_host}")
-            raise HTTPException(status_code=401, detail="Invalid signature")
-
-        # Parse JSON
-        consultation_data = json.loads(body_str)
-        consultation_request = ConsultationRequest(**consultation_data)
-
-        # Store in database
-        timestamp = datetime.now(UTC).isoformat()
-        data_json = consultation_request.model_dump_json()
-        consultation_id = await create_consultation(
-            uuid=consultation_request.uuid,
-            submitted_at=timestamp,
-            submitter_type=consultation_request.submitter_type,
-            data_json=data_json,
-        )
-
-        logger.info(
-            f"Consultation received: id={consultation_id}, uuid={consultation_request.uuid}, "
-            f"animal={consultation_request.animal.nom}, submitter={consultation_request.submitter_type}"
-        )
-
-        # Schedule async processing (files + email)
-        background_tasks.add_task(
-            process_consultation_submission,
-            consultation_request,
-            consultation_id,
-        )
-
-        return {
-            "success": True,
-            "id": consultation_id,
-            "uuid": consultation_request.uuid,
-            "status": "pending",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error submitting consultation: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("")
@@ -107,7 +30,7 @@ async def list_consultations_endpoint(
     """List all consultations with optional filtering.
 
     Args:
-        status: Filter by status (pending, received, integrated, rejected)
+        status: Filter by status (unmatched, matched, integrated, rejected)
         limit: Number of results to return
         offset: Number of results to skip
 
@@ -167,149 +90,185 @@ async def get_consultation_detail(consultation_id: int) -> dict:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/{consultation_id}/status")
-async def update_status(
+@router.get("/{consultation_id}/search")
+async def search_animal_matches(
     consultation_id: int,
-    status: str,
+    search_query: Annotated[str, Query()] = "",
 ) -> dict:
-    """Update consultation status.
+    """Propose animal matches from ERP for a consultation.
+
+    Searches ERP for matching animals based on consultation data.
 
     Args:
-        consultation_id: ID of consultation
-        status: New status (pending, received, integrated, rejected)
+        consultation_id: Consultation ID
+        search_query: Override search query (optional)
 
     Returns:
-        Updated consultation
+        List of suggested matches with erp_animal_id
     """
     try:
-        # Validate status
-        valid_statuses = [s.value for s in ConsultationStatus]
-        if status not in valid_statuses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
-            )
-
-        await update_consultation_status(consultation_id, status)
-        consultation = await get_consultation(consultation_id)
-        if not consultation:
-            raise HTTPException(status_code=404, detail="Consultation not found")
-
-        logger.info(f"Consultation {consultation_id} status updated to {status}")
-        return consultation
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating consultation status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.patch("/{consultation_id}/integrate")
-async def integrate_consultation(
-    consultation_id: int,
-    background_tasks: BackgroundTasks,
-) -> dict:
-    """Integrate consultation into VetoPartner ERP.
-
-    Orchestrates:
-    1. Search for or create client in VetoPartner
-    2. Search for or create animal in VetoPartner
-    3. Create consultation in VetoPartner
-    4. Upload documents
-
-    Processed asynchronously.
-
-    Args:
-        consultation_id: ID of consultation to integrate
-        background_tasks: FastAPI background tasks
-
-    Returns:
-        Integration scheduled response
-    """
-    try:
+        # Get consultation
         consultation = await get_consultation(consultation_id)
         if not consultation:
             raise HTTPException(status_code=404, detail="Consultation not found")
 
         # Parse consultation data
-        import json
+        data = json.loads(consultation.get("data_json", "{}"))
 
-        if "data_json" in consultation:
-            try:
-                consultation_data = json.loads(consultation["data_json"])
-            except (json.JSONDecodeError, ValueError):
-                consultation_data = {}
-        else:
-            consultation_data = {}
+        # Build search query
+        if not search_query:
+            animal_name = data.get("animal_name", "")
+            owner_name = data.get("owner_name", "")
+            search_query = f"{animal_name} {owner_name}".strip()
 
-        # Schedule async integration
-        background_tasks.add_task(
-            integrate_consultation_with_erp,
-            consultation_id,
-            consultation_data,
-        )
+        if not search_query:
+            return {"consultation_id": consultation_id, "suggestions": []}
 
-        logger.info(f"ERP integration scheduled for consultation {consultation_id}")
+        logger.info(f"Searching ERP for: {search_query}")
+
+        # Search in ERP
+        matches = await search_animals_in_erp(search_query)
 
         return {
-            "success": True,
-            "id": consultation_id,
-            "message": "Integration scheduled",
+            "consultation_id": consultation_id,
+            "search_query": search_query,
+            "email_data": {
+                "animal_name": data.get("animal_name"),
+                "owner_name": data.get("owner_name"),
+                "motif": data.get("motif"),
+            },
+            "suggestions": [
+                {
+                    "erp_animal_id": m.erp_animal_id,
+                    "animal_name": m.animal_name,
+                    "race": m.race,
+                    "owner": m.owner_name,
+                    "species": m.species,
+                    "last_visit": m.last_visit,
+                    "weight": m.weight,
+                }
+                for m in matches
+            ],
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error scheduling integration: {e}")
+        logger.error(f"Error searching matches: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/cron/imap-monitor")
-async def cron_imap_monitor() -> dict:
-    """Periodic cron task: Monitor IMAP for webhook emails from verso-vet.com.
+@router.post("/{consultation_id}/integrate")
+async def integrate_consultation(
+    consultation_id: int,
+    erp_animal_id: int | None = Query(None),
+    create_new_client: bool = Query(False),
+) -> dict:
+    """Integrate consultation into VetoPartner ERP.
 
-    Called every minute by the system. Monitors mailbox for VERSO_WEBHOOK
-    emails, extracts UUIDs, and processes consultations.
+    Either match with existing animal or create new client+animal.
 
-    Returns:
-        Number of consultations processed
-    """
-    try:
-        processed = await monitor_imap()
-        return {
-            "success": True,
-            "processed": len(processed),
-            "uuids": processed,
-        }
-    except Exception as e:
-        logger.error(f"Error in cron_imap_monitor: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-        }
-
-
-@router.get("/cron/pull-wordpress")
-async def cron_pull_wordpress() -> dict:
-    """Periodic cron task: Pull unprocessed consultations from WordPress.
-
-    Called every minute by the system. Queries verso-vet.com for new
-    consultations and stores them locally.
+    Args:
+        consultation_id: Consultation ID to integrate
+        erp_animal_id: Animal ID in ERP (if matching existing)
+        create_new_client: If True, create new client+animal
 
     Returns:
-        Number of consultations processed
+        Integration result with erp_consult_id
     """
     try:
-        processed = await pull_consultations_from_wordpress()
-        return {
-            "success": True,
-            "processed": len(processed),
-            "uuids": processed,
-        }
+        # Get consultation
+        consultation = await get_consultation(consultation_id)
+        if not consultation:
+            raise HTTPException(status_code=404, detail="Consultation not found")
+
+        # Parse consultation data
+        data = json.loads(consultation.get("data_json", "{}"))
+
+        logger.info(f"Integrating consultation {consultation_id}...")
+
+        if create_new_client:
+            # Create new client and animal
+            logger.info("Creating new client and animal...")
+
+            create_result = await create_new_client_and_animal(
+                owner_name=data.get("owner_name", "Unknown"),
+                owner_email=data.get("owner_email", ""),
+                owner_phone=data.get("owner_phone", ""),
+                animal_name=data.get("animal_name", "Unknown"),
+                species=data.get("animal_species", "Unknown"),
+                race=data.get("animal_race", ""),
+            )
+
+            if not create_result.get("success"):
+                raise HTTPException(status_code=400, detail="Failed to create client/animal")
+
+            erp_animal_id = create_result["idanimal"]
+
+        elif not erp_animal_id:
+            raise HTTPException(status_code=400, detail="Either erp_animal_id or create_new_client required")
+
+        # Now integrate with animal
+        result = await integrate_with_erp(
+            consultation_id=consultation_id,
+            erp_animal_id=erp_animal_id,
+            motif=data.get("motif", ""),
+            specialite=data.get("specialite", "general"),
+            urgence=data.get("urgence", False),
+            attachments=[],  # TODO: Get from consultation files
+        )
+
+        if result.get("success"):
+            logger.info(f"Consultation {consultation_id} integrated successfully")
+            return {
+                "success": True,
+                "id": consultation_id,
+                "erp_consult_id": result.get("erp_consult_id"),
+                "message": "Integrated into VetoPartner",
+            }
+        else:
+            raise HTTPException(status_code=400, detail=result.get("error", "Integration failed"))
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error in cron_pull_wordpress: {e}")
+        logger.error(f"Error integrating consultation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search")
+async def search_animals(
+    q: Annotated[str, Query(description="Search query (animal/owner name)")] = "",
+) -> dict:
+    """Direct search in ERP.
+
+    Args:
+        q: Search query
+
+    Returns:
+        List of matching animals
+    """
+    try:
+        if not q:
+            return {"matches": []}
+
+        matches = await search_animals_in_erp(q)
+
         return {
-            "success": False,
-            "error": str(e),
+            "query": q,
+            "count": len(matches),
+            "matches": [
+                {
+                    "erp_animal_id": m.erp_animal_id,
+                    "animal_name": m.animal_name,
+                    "race": m.race,
+                    "owner": m.owner_name,
+                    "species": m.species,
+                }
+                for m in matches
+            ],
         }
+
+    except Exception as e:
+        logger.error(f"Error in search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
