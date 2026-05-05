@@ -13,11 +13,13 @@ from src.core.database import (
     list_consultations,
     update_consultation_status,
 )
+from src.core.imap_monitor import monitor_imap
 from src.core.models import ConsultationRequest, ConsultationStatus
+from src.modules.consultations.security import validate_hmac_signature
 from src.modules.consultations.service import (
     integrate_consultation_with_erp,
     process_consultation_submission,
-    validate_hmac_signature,
+    pull_consultations_from_wordpress,
 )
 
 router = APIRouter(prefix="/consultations", tags=["consultations"])
@@ -261,3 +263,53 @@ async def integrate_consultation(
     except Exception as e:
         logger.error(f"Error scheduling integration: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cron/imap-monitor")
+async def cron_imap_monitor() -> dict:
+    """Periodic cron task: Monitor IMAP for webhook emails from verso-vet.com.
+
+    Called every minute by the system. Monitors mailbox for VERSO_WEBHOOK
+    emails, extracts UUIDs, and processes consultations.
+
+    Returns:
+        Number of consultations processed
+    """
+    try:
+        processed = await monitor_imap()
+        return {
+            "success": True,
+            "processed": len(processed),
+            "uuids": processed,
+        }
+    except Exception as e:
+        logger.error(f"Error in cron_imap_monitor: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@router.get("/cron/pull-wordpress")
+async def cron_pull_wordpress() -> dict:
+    """Periodic cron task: Pull unprocessed consultations from WordPress.
+
+    Called every minute by the system. Queries verso-vet.com for new
+    consultations and stores them locally.
+
+    Returns:
+        Number of consultations processed
+    """
+    try:
+        processed = await pull_consultations_from_wordpress()
+        return {
+            "success": True,
+            "processed": len(processed),
+            "uuids": processed,
+        }
+    except Exception as e:
+        logger.error(f"Error in cron_pull_wordpress: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }

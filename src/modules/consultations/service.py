@@ -1,305 +1,23 @@
-"""Business logic for consultation requests."""
+"""Business logic for consultation processing and ERP integration."""
 
-import hashlib
-import hmac
 from datetime import UTC, datetime
-from pathlib import Path
 
 import httpx
 
-from src.config import DATABASE_PATH, logger
+from src.config import logger
 from src.core.alerting import send_email
 from src.core.database import (
+    create_consultation,
     update_consultation_erp_ids,
     update_consultation_status,
     update_files_local,
 )
 from src.core.models import ConsultationRequest
-from src.core.vault import get_secret
-
-# Local file storage
-FILES_DIR = DATABASE_PATH.parent / "consultation-requests" / "files"
-FILES_DIR.mkdir(parents=True, exist_ok=True)
-
-
-async def validate_hmac_signature(
-    request_body: str,
-    signature_header: str,
-) -> bool:
-    """Validate HMAC-SHA256 signature from WordPress.
-
-    Args:
-        request_body: Raw request body (JSON string)
-        signature_header: X-Verso-Signature header value
-
-    Returns:
-        True if signature is valid, False otherwise
-    """
-    try:
-        webhook_secret = await get_secret("consultation_webhook_secret")
-        expected_signature = hmac.new(
-            webhook_secret.encode(),
-            request_body.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-        return hmac.compare_digest(signature_header, expected_signature)
-    except Exception as e:
-        logger.warning(f"HMAC validation error: {e}")
-        return False
-
-
-async def validate_file_token(filename: str, provided_token: str) -> bool:
-    """Validate HMAC token for file download.
-
-    Args:
-        filename: Filename to validate
-        provided_token: Token from user
-
-    Returns:
-        True if token is valid
-    """
-    try:
-        expected_token = await generate_file_token(filename)
-        return hmac.compare_digest(provided_token, expected_token)
-    except Exception as e:
-        logger.warning(f"Token validation error: {e}")
-        return False
-
-
-async def generate_file_token(filename: str, ttl_days: int = 7) -> str:
-    """Generate HMAC token for file download.
-
-    Args:
-        filename: Filename to tokenize
-        ttl_days: Token validity in days
-
-    Returns:
-        HMAC token (can be used in URL)
-    """
-    try:
-        file_secret = await get_secret("consultation_file_secret")
-        token = hmac.new(
-            file_secret.encode(),
-            f"{filename}".encode(),
-            hashlib.sha256,
-        ).hexdigest()
-        return token
-    except Exception as e:
-        logger.error(f"Token generation error: {e}")
-        return ""
-
-
-async def download_and_store_files(
-    uuid: str,
-    file_urls: list[str],
-) -> list[str]:
-    """Download files from WordPress and store locally.
-
-    Args:
-        uuid: Consultation UUID
-        file_urls: List of file URLs from WordPress
-
-    Returns:
-        List of local file paths
-
-    Raises:
-        Exception: If download fails
-    """
-    local_paths: list[str] = []
-    uuid_dir = FILES_DIR / uuid
-    uuid_dir.mkdir(parents=True, exist_ok=True)
-
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        for url in file_urls:
-            try:
-                # Download file
-                response = await client.get(url)
-                response.raise_for_status()
-
-                # Extract filename from URL
-                filename = url.split("/")[-1]
-                if not filename or "." not in filename:
-                    filename = f"file_{len(local_paths)}.bin"
-
-                # Save locally
-                local_path = uuid_dir / filename
-                local_path.write_bytes(response.content)
-
-                local_paths.append(f"{uuid}/{filename}")
-                logger.info(f"Downloaded file: {filename} ({len(response.content)} bytes)")
-
-            except Exception as e:
-                logger.error(f"Failed to download {url}: {e}")
-                # Continue with other files
-
-    if not local_paths:
-        logger.warning(f"No files downloaded for consultation {uuid}")
-
-    return local_paths
-
-
-def build_notification_email(
-    request: ConsultationRequest,
-    file_urls: list[str],
-    consultation_id: int,
-) -> tuple[str, str]:
-    """Build HTML email notification.
-
-    Args:
-        request: ConsultationRequest data
-        file_urls: List of local file paths
-        consultation_id: Database ID for dashboard link
-
-    Returns:
-        Tuple of (plain_text_body, html_body)
-    """
-    # Build owner/vet section based on submitter_type
-    if request.submitter_type == "vet" and request.vet:
-        contact_section = f"""
---- Référant Vétérinaire ---
-Nom: {request.vet.nom} {request.vet.prenom}
-Clinique: {request.vet.clinique}
-Email: {request.vet.email}
-Tél: {request.vet.telephone}
-"""
-    elif request.owner:
-        contact_section = f"""
---- Propriétaire ---
-Nom: {request.owner.nom} {request.owner.prenom}
-Email: {request.owner.email or "N/A"}
-Tél: {request.owner.telephone or "N/A"}
-"""
-    else:
-        contact_section = "--- Contact info non disponible ---\n"
-
-    # Plain text
-    text_body = f"""
-Nouvelle demande de consultation reçue
-
-ID: {consultation_id}
-UUID: {request.uuid}
-Type: {request.submitter_type.upper()}
-
---- Animal ---
-Nom: {request.animal.nom}
-Espèce: {request.animal.espece}
-Race: {request.animal.race or "N/A"}
-
-{contact_section}
---- Motif ---
-Spécialité: {request.specialite}
-Urgence: {"Oui" if request.urgence else "Non"}
-Motif: {request.motif}
-
-Accédez au dashboard: http://10.0.0.44:8092/dashboard
-"""
-
-    # HTML body
-    html_body = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: Arial, sans-serif; color: #333; }}
-        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: #2196F3; color: white; padding: 15px; border-radius: 5px; }}
-        .section {{ margin: 15px 0; padding: 10px; border-left: 3px solid #2196F3; }}
-        .field {{ margin: 8px 0; }}
-        .label {{ font-weight: bold; color: #555; }}
-        .urgent {{ color: #d32f2f; font-weight: bold; }}
-        .button {{ display: inline-block; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 3px; }}
-        .files {{ background: #f5f5f5; padding: 10px; border-radius: 3px; margin: 10px 0; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h2>🏥 Nouvelle Demande de Consultation</h2>
-        </div>
-
-        <div class="section">
-            <div class="field"><span class="label">ID:</span> {consultation_id}</div>
-            <div class="field"><span class="label">UUID:</span> {request.uuid}</div>
-            <div class="field"><span class="label">Type:</span> {request.submitter_type.upper()}</div>
-        </div>
-
-        <div class="section">
-            <h3>🐾 Patient</h3>
-            <div class="field"><span class="label">Nom:</span> {request.animal.nom}</div>
-            <div class="field"><span class="label">Espèce:</span> {request.animal.espece}</div>
-            <div class="field"><span class="label">Race:</span> {request.animal.race or "Non spécifiée"}</div>
-        </div>
-
-        <div class="section">
-            {"<h3>🩺 Référant Vétérinaire</h3>" if request.submitter_type == "vet" else "<h3>👤 Propriétaire</h3>"}
-            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.vet.nom} {request.vet.prenom}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Clinique:</span> {request.vet.clinique}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.vet.email}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.vet.telephone}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.owner.nom} {request.owner.prenom}</div>" if request.owner else ""}
-            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.owner.email or 'N/A'}</div>" if request.owner else ""}
-            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.owner.telephone or 'N/A'}</div>" if request.owner else ""}
-        </div>
-
-        <div class="section">
-            <h3>📋 Motif</h3>
-            <div class="field"><span class="label">Spécialité:</span> {request.specialite}</div>
-            <div class="field"><span class="label">Urgence:</span> <span class="{"urgent" if request.urgence else ""}">{
-        "🔴 OUI" if request.urgence else "⚪ Non"
-    }</span></div>
-            <div class="field"><span class="label">Motif:</span><br>{request.motif}</div>
-        </div>
-
-        {
-        f'''<div class="files">
-            <h3>📎 Fichiers ({len(file_urls)})</h3>
-            <ul>{"".join(f"<li>{f.split('/')[-1]}</li>" for f in file_urls)}</ul>
-        </div>'''
-        if file_urls
-        else ""
-    }
-
-        <div class="section" style="text-align: center; margin-top: 30px;">
-            <a href="http://10.0.0.44:8092/dashboard" class="button">Accéder au Dashboard</a>
-        </div>
-
-        <hr>
-        <p style="font-size: 12px; color: #999;">
-            Consultation #{consultation_id} • {datetime.now(UTC).isoformat()}
-        </p>
-    </div>
-</body>
-</html>
-"""
-
-    return text_body, html_body
-
-
-def get_file_path(uuid: str, filename: str) -> Path | None:
-    """Get local file path for a consultation file.
-
-    Args:
-        uuid: Consultation UUID
-        filename: File name
-
-    Returns:
-        Path to file if it exists, None otherwise
-    """
-    file_path = FILES_DIR / uuid / filename
-
-    # Security: ensure the path is within FILES_DIR (prevent directory traversal)
-    try:
-        file_path.resolve().relative_to(FILES_DIR.resolve())
-    except ValueError:
-        logger.error(f"Attempted directory traversal: {file_path}")
-        return None
-
-    if file_path.exists() and file_path.is_file():
-        return file_path
-
-    return None
+from src.modules.consultations.files import (
+    FILES_DIR,
+    download_and_store_files,
+)
+from src.modules.consultations.notifications import build_notification_email
 
 
 async def integrate_consultation_with_erp(
@@ -308,7 +26,8 @@ async def integrate_consultation_with_erp(
 ) -> dict:
     """Integrate consultation into VetoPartner ERP.
 
-    Orchestrates: search/create client, search/create animal, create consultation, upload files.
+    Orchestrates: search/create client, search/create animal,
+    create consultation, upload files.
 
     Args:
         consultation_id: Database consultation ID
@@ -316,9 +35,6 @@ async def integrate_consultation_with_erp(
 
     Returns:
         Dict with erp_client_id, erp_animal_id, erp_consult_id, success
-
-    Raises:
-        Exception: If critical operation fails
     """
     from src.modules.consultations.erp import (
         create_animal,
@@ -393,24 +109,20 @@ async def integrate_consultation_with_erp(
         )
         logger.info(f"Created consultation: {erp_consult_id}")
 
-        # Step 6: Upload documents (best-effort, don't fail if some uploads fail)
+        # Step 6: Upload documents (best-effort)
         files_local = consultation_data.get("files_local", [])
         if files_local:
             logger.info(f"Uploading {len(files_local)} documents")
             for local_path in files_local:
                 try:
-                    # local_path is like "uuid/filename"
                     file_full_path = FILES_DIR / local_path
                     filename = local_path.split("/")[-1]
                     await upload_document(erp_animal_id, str(file_full_path), filename)
                     logger.info(f"Uploaded: {filename}")
                 except Exception as e:
                     logger.warning(f"Failed to upload {local_path}: {e}")
-                    # Continue with other files
 
         # Step 7: Update database
-        from datetime import UTC, datetime
-
         timestamp = datetime.now(UTC).isoformat()
         await update_consultation_erp_ids(
             consultation_id,
@@ -430,7 +142,6 @@ async def integrate_consultation_with_erp(
 
     except Exception as e:
         logger.error(f"Error integrating consultation {consultation_id}: {e}")
-        # Mark as rejected
         await update_consultation_status(consultation_id, "rejected")
         raise
 
@@ -441,7 +152,6 @@ async def process_consultation_submission(
 ) -> None:
     """Process consultation after initial storage.
 
-    This is called asynchronously after the webhook response.
     Downloads files, sends email, updates status.
 
     Args:
@@ -486,4 +196,101 @@ async def process_consultation_submission(
 
     except Exception as e:
         logger.error(f"Error processing consultation {consultation_id}: {e}")
-        await update_consultation_status(consultation_id, "rejected")
+
+
+async def pull_consultations_from_wordpress(uuid: str | None = None) -> list[str]:
+    """Pull consultations from WordPress.
+
+    Called either:
+    - Periodically to get all unprocessed consultations
+    - From IMAP monitor when webhook email received
+
+    Args:
+        uuid: Optional UUID to fetch single consultation
+
+    Returns:
+        List of processed consultation UUIDs
+    """
+    try:
+        wp_url = "https://verso-vet.com"
+
+        if uuid:
+            logger.info(f"Fetching consultation {uuid} from WordPress webhook...")
+        else:
+            logger.info("Pulling unprocessed consultations from WordPress...")
+
+        endpoint = f"{wp_url}/wp-json/verso/v1/consultations/unprocessed"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(endpoint, timeout=30.0)
+
+        if response.status_code != 200:
+            logger.warning(f"WordPress returned {response.status_code}")
+            return []
+
+        consultations = response.json()
+
+        # If UUID specified, filter to just that consultation
+        if uuid:
+            consultations = [c for c in consultations if c.get("uuid") == uuid]
+            if not consultations:
+                logger.warning(f"Consultation {uuid} not found in WordPress")
+                return []
+
+        if not consultations:
+            logger.debug("No unprocessed consultations found")
+            return []
+
+        logger.info(f"Found {len(consultations)} consultation(s) to process")
+
+        processed_uuids = []
+
+        for consultation in consultations:
+            try:
+                cons_uuid = consultation.get("uuid")
+                data = consultation.get("data", {})
+
+                if not cons_uuid or not data:
+                    logger.warning(f"Invalid consultation data: {consultation}")
+                    continue
+
+                # Create ConsultationRequest object
+                request_data = ConsultationRequest(**data)
+
+                # Store in database
+                timestamp = datetime.now(UTC).isoformat()
+                data_json = request_data.model_dump_json()
+
+                consultation_id = await create_consultation(
+                    uuid=cons_uuid,
+                    submitted_at=timestamp,
+                    submitter_type=request_data.submitter_type,
+                    data_json=data_json,
+                )
+
+                logger.info(f"Stored consultation {cons_uuid} (ID: {consultation_id})")
+
+                # Process asynchronously
+                await process_consultation_submission(
+                    request_data,
+                    consultation_id,
+                )
+
+                # Mark as processed in WordPress
+                mark_url = f"{wp_url}/wp-json/verso/v1/consultations/{cons_uuid}/processed"
+                async with httpx.AsyncClient() as client:
+                    await client.post(mark_url, timeout=30.0)
+
+                processed_uuids.append(cons_uuid)
+                logger.info(f"Marked {cons_uuid} as processed in WordPress")
+
+            except Exception as e:
+                logger.error(f"Error processing consultation from WP: {e}")
+                continue
+
+        logger.info(f"Successfully processed {len(processed_uuids)} consultation(s)")
+        return processed_uuids
+
+    except Exception as e:
+        logger.error(f"Error pulling consultations from WordPress: {e}")
+        return []

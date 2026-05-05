@@ -15,7 +15,8 @@ from src.config import PORT, SERVICE_NAME, VERSION, logger
 from src.core.database import init_db
 from src.core.models import HealthResponse
 from src.modules.consultations import router as consultation_router
-from src.modules.consultations.service import get_file_path, validate_file_token
+from src.modules.consultations.files import get_file_path
+from src.modules.consultations.security import validate_file_token
 from src.modules.dashboard import router as dashboard_router
 
 # OnyxSDK - graceful fallback

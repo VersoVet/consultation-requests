@@ -45,7 +45,7 @@ def sample_consultation() -> ConsultationRequest:
 @pytest.mark.asyncio
 async def test_validate_hmac_signature_valid(sample_consultation: ConsultationRequest) -> None:
     """Test HMAC signature validation with valid signature."""
-    from src.modules.consultations.service import validate_hmac_signature
+    from src.modules.consultations.security import validate_hmac_signature
 
     # Test with placeholder - in real tests would mock get_secret
     result = await validate_hmac_signature("test_body", "invalid_signature")
@@ -54,7 +54,7 @@ async def test_validate_hmac_signature_valid(sample_consultation: ConsultationRe
 
 def test_build_notification_email(sample_consultation: ConsultationRequest) -> None:
     """Test email template building."""
-    from src.modules.consultations.service import build_notification_email
+    from src.modules.consultations.notifications import build_notification_email
 
     try:
         text_body, html_body = build_notification_email(
@@ -75,7 +75,7 @@ def test_build_notification_email(sample_consultation: ConsultationRequest) -> N
 @pytest.mark.asyncio
 async def test_generate_file_token_returns_string() -> None:
     """Test that generate_file_token returns a string token."""
-    from src.modules.consultations.service import generate_file_token
+    from src.modules.consultations.security import generate_file_token
 
     # This will fail without proper Vault setup, but tests the function exists
     token = await generate_file_token("test_file.pdf")
@@ -84,7 +84,7 @@ async def test_generate_file_token_returns_string() -> None:
 
 def test_get_file_path_with_invalid_path() -> None:
     """Test that get_file_path prevents directory traversal."""
-    from src.modules.consultations.service import get_file_path
+    from src.modules.consultations.files import get_file_path
 
     # Attempt directory traversal
     result = get_file_path("test_uuid", "../../../etc/passwd")
