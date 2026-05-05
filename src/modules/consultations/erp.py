@@ -180,7 +180,7 @@ async def create_animal(
     """
     try:
         payload = {
-            "client_id": client_id,
+            "idclient": client_id,
             "nom": nom,
             "espece": espece,
         }
@@ -191,7 +191,7 @@ async def create_animal(
         if date_naissance:
             payload["date_naissance"] = date_naissance
         if puce:
-            payload["puce"] = puce
+            payload["puce_num"] = puce
         if poids:
             payload["poids"] = poids
 
@@ -236,7 +236,7 @@ async def create_consultation(
     try:
         payload = {
             "animal_id": animal_id,
-            "motif": motif,
+            "synthese": motif,
         }
         if specialite:
             payload["specialite"] = specialite
