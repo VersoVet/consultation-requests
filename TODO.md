@@ -3,9 +3,24 @@
 > **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Last Updated: 2026-05-05
 
 ## Current Status
-✅ **COMPLETED & DEPLOYED** - All phases finished. Service operational on OnyxSoma (10.0.0.44:8092)
+✅ **OPERATIONAL** - Core system working. ERP integration bug fixed (field names corrected). Awaiting service restart to apply changes.
+
+**Latest (2026-05-05 07:04)**:
+- Fixed ERP API field mappings (idclient, puce_num, synthese)
+- Verified ERP endpoints work correctly
+- Verified WordPress polling works (pulling consultations from WordPress successfully)
+- System is ready for integration testing once service is redeployed
 
 ## Completed ✅
+
+### Phase 0: Bug Fixes (2026-05-05) ✅
+- [x] Fixed ERP API field name mappings
+  - Changed `client_id` → `idclient` (create_animal endpoint)
+  - Changed `motif` → `synthese` (create_consultation endpoint)  
+  - Changed `puce` → `puce_num` (create_animal endpoint)
+- [x] Tested all ERP operations locally - SUCCESS
+- [x] Committed fixes to repository
+- [ ] **PENDING**: Deploy via Forge to apply changes to live service (port 8092)
 
 ### Phase 1: Structure & Foundation ✅
 - [x] Create directory structure
