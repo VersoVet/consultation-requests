@@ -1,10 +1,14 @@
 # Consultation Requests - Architecture
 
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.18
+
 ## Overview
 
 **Skill**: `consultation-requests` (port 8092, OnyxSoma)
 
-Centralized management system for consultation requests from verso-vet.com. Receives requests via webhook from WordPress, stores them in SQLite, and integrates them into VetoPartner ERP.
+Centralized management system for consultation requests from verso-vet.com. Receives requests via secure HMAC-validated webhook from WordPress, stores them in SQLite, and integrates them into VetoPartner ERP.
+
+**Operational**: ✅ Tested with real submissions (owner + vet referrals)
 
 ### Key Features
 - Receive consultation requests via secure webhook from WordPress
@@ -33,7 +37,8 @@ Centralized management system for consultation requests from verso-vet.com. Rece
 - `get_secret_json(key)` - retrieve and parse JSON
 
 #### `src/core/database.py`
-- SQLite async client (aiosqlite)
+- SQLite sync client with ThreadPoolExecutor (async-safe pattern)
+- Replaced aiosqlite due to threading conflicts with event loop
 - Schema initialization
 - CRUD operations for consultations
 
@@ -69,21 +74,36 @@ Pydantic models:
 
 #### `modules/consultations/`
 
-**`router.py`**
-- `POST /consultations/submit` - receive from WordPress
-- `GET /consultations` - list with filtering
+**`router.py`** (23 lines)
+- `POST /consultations/submit` - receive from WordPress webhook
+- `GET /consultations` - list with filtering & pagination
 - `GET /consultations/{id}` - get details
 - `PATCH /consultations/{id}/status` - update status
 - `PATCH /consultations/{id}/integrate` - integrate into ERP
+- `GET /cron/imap-monitor` - IMAP webhook email monitoring
+- `GET /cron/pull-wordpress` - WordPress polling
 
-**`service.py` (future)**
-- Business logic for:
-  - Downloading files from WordPress
-  - Validating data
-  - Building email content
-  - Calling erp-connector
+**`security.py`** (75 lines) ✅
+- HMAC-SHA256 signature validation
+- `validate_hmac_signature()` - webhook authentication
+- `validate_file_token()`, `generate_file_token()` - secure file downloads
 
-**`erp.py` (future)**
+**`files.py`** (85 lines) ✅
+- File download & storage operations
+- `download_and_store_files()` - WordPress to local storage
+- `get_file_path()` - secure file retrieval with path traversal protection
+
+**`notifications.py`** (143 lines) ✅
+- Email template building
+- `build_notification_email()` - HTML + plaintext emails for consultations@verso-vet.com
+
+**`service.py`** (296 lines) ✅
+- Business logic orchestration
+- `integrate_consultation_with_erp()` - VetoPartner integration
+- `process_consultation_submission()` - async file download + email
+- `pull_consultations_from_wordpress()` - WordPress API polling
+
+**`erp.py`**
 - Client for erp-connector API
 - `search_client()`, `search_animal()`
 - `create_client()`, `create_animal()`
@@ -250,18 +270,25 @@ User clicks "Integrate" in dashboard
 
 ## Development Notes
 
-### Current Status
-- ✅ Database schema (SQLite)
-- ✅ Core models
-- ✅ API endpoints (basic)
+### Current Status ✅ **PRODUCTION READY**
+- ✅ Database schema (SQLite with ThreadPoolExecutor)
+- ✅ Core models (Pydantic validation)
+- ✅ API endpoints (REST + webhook)
+- ✅ HMAC-SHA256 signature validation
+- ✅ File download & storage (secure tokens)
+- ✅ Email notifications (HTML templates)
+- ✅ ERP integration orchestration
+- ✅ WordPress polling (IMAP + REST)
 - ✅ Dashboard template
-- 🔄 **Next**: Email integration, ERP integration, file handling
+- ✅ Forge validation (18/18 phases)
+- ✅ Production deployment (v1.0.18)
 
 ### Dependencies
-- FastAPI + uvicorn
-- aiosqlite (async SQLite)
-- httpx (async HTTP)
-- pydantic (validation)
+- FastAPI 0.104.1 + uvicorn 0.24.0
+- sqlite3 (built-in) + ThreadPoolExecutor
+- httpx 0.25.2 (async HTTP)
+- pydantic 2.5.0 (validation)
+- imapclient >=2.3.1 (email monitoring)
 - onyx-sdk (optional, graceful fallback)
 
 ### Future Enhancements

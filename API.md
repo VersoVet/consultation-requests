@@ -1,16 +1,36 @@
 # Consultation Requests - API Reference
 
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Last Updated: 2026-05-05
+
 ## Base URL
 ```
 http://10.0.0.44:8092
+```
+
+### Webhook Endpoint (from verso-vet.com)
+```
+POST http://10.0.0.44:8092/consultations/submit
 ```
 
 ## Health & Status
 
 ### GET /health
 Health check endpoint.
+
+**Status**: 🟢 Healthy
+
 ```bash
 curl http://10.0.0.44:8092/health
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "service": "consultation-requests",
+  "version": "1.0.18",
+  "timestamp": "2026-05-05T06:35:25.596196+00:00"
+}
 ```
 
 ### GET /dashboard
