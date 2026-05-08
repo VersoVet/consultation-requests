@@ -137,6 +137,8 @@
     "enabled": true,
     "url": "/dashboard",
     "icon": "stethoscope",
-    "title": "Consultation Requests"
+    "title": "Consultation Requests",
+    "page": "/dashboard",
+    "category": "healthcare"
   }
 }
