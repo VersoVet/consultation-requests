@@ -6,19 +6,18 @@
 
 **Skill**: `consultation-requests` (port 8092, OnyxSoma)
 
-Centralized management system for consultation requests from verso-vet.com. Receives requests via secure HMAC-validated webhook from WordPress, stores them in SQLite, and integrates them into VetoPartner ERP.
+Centralized management system for consultation requests from verso-vet.com. Email-based architecture: receives requests from WordPress plugin via email to `consultations@verso-vet.com`, monitors mailbox via IMAP, extracts and stores data in SQLite, and provides REST API + dashboard for tracking.
 
-**Operational**: ✅ Tested with real submissions (owner + vet referrals)
+**Operational**: ✅ IMAP monitoring, email parsing, SQLite storage, REST API, web dashboard
 
 ### Key Features
-- Receive consultation requests via secure webhook from WordPress
-- Store requests in SQLite database
-- Download documents from WordPress and store locally
-- Send confirmation emails to consultations@verso-vet.com
-- Search patients/owners in VetoPartner
-- Create new clients/animals in VetoPartner (via erp-connector)
-- Integrate consultations into VetoPartner with documents
-- Dashboard for managing requests
+- **IMAP Monitoring**: Listens for emails from verso-consultation-plugin on consultations@verso-vet.com
+- **Email Parsing**: Extracts JSON attachments with structured consultation data
+- **SQLite Storage**: Persistent database with consultation records
+- **REST API**: Query consultations with filtering and pagination
+- **Web Dashboard**: Visual interface for tracking status and downloading files
+- **Token Security**: HMAC-based token validation for file downloads
+- **Database Cache Refresh**: `/refresh-db` endpoint for manual cache invalidation
 
 ---
 
@@ -27,30 +26,29 @@ Centralized management system for consultation requests from verso-vet.com. Rece
 ### Core Modules
 
 #### `src/config.py`
-- Load manifest.json and set configuration
-- DATABASE_PATH, PORT, VAULT_URL, ERP_URL, MAILBOX_URL
-- SERVICE_NAME, VERSION
+- Loads manifest.json configuration
+- DATABASE_PATH, PORT, SERVICE_NAME, VERSION
+- Setup logging and environment variables
 
 #### `src/core/vault.py`
-- Async client for Onyx Vault
-- `get_secret(key)` - retrieve and cache (5 min TTL)
-- `get_secret_json(key)` - retrieve and parse JSON
+- Async client for Onyx Vault secret retrieval
+- `get_secret(key)` - retrieve secrets (IMAP credentials, etc.)
 
 #### `src/core/database.py`
-- SQLite sync client with ThreadPoolExecutor (async-safe pattern)
-- Replaced aiosqlite due to threading conflicts with event loop
-- Schema initialization
-- CRUD operations for consultations
+- SQLite connection management with ThreadPoolExecutor
+- Async-safe pattern using thread pool for sync database operations
+- Schema initialization and CRUD operations
+- Global connection cache with `reset_db()` method for manual refresh
 
 **Table: `consultations`**
 ```sql
-id              INTEGER PRIMARY KEY
+id              INTEGER PRIMARY KEY AUTOINCREMENT
 uuid            TEXT UNIQUE NOT NULL
-submitted_at    TEXT NOT NULL
-status          TEXT (pending|received|integrated|rejected)
-submitter_type  TEXT (vet|owner)
-data_json       TEXT (serialized ConsultationRequest)
-files_local     TEXT (JSON list of local paths)
+submitted_at    TEXT NOT NULL (ISO format)
+status          TEXT NOT NULL DEFAULT 'pending'
+submitter_type  TEXT NOT NULL ('vet' or 'owner')
+data_json       TEXT NOT NULL (JSON-serialized consultation data)
+files_local     TEXT (JSON list of local file paths)
 erp_client_id   INTEGER
 erp_animal_id   INTEGER
 erp_consult_id  INTEGER
@@ -59,125 +57,103 @@ notes           TEXT
 ```
 
 #### `src/core/models.py`
-Pydantic models:
-- `ConsultationRequest` - full request data
-- `ConsultationResponse` - response with DB IDs
-- `VetInfo`, `OwnerInfo`, `AnimalInfo` - sub-models
-- `ConsultationStatus` enum
-- `HealthResponse`
+Pydantic data models:
+- `HealthResponse` - health check response
+- Standard validation and type checking
 
-#### `src/core/alerting.py`
-- Email sending via onyx-mailbox (`/api/send`)
-- Internal notifications via onyx-mailbox (`/api/notify`)
+#### `src/core/imap_monitor.py`
+- IMAP client for email monitoring
+- `get_imap_credentials()` - retrieve from Vault
+- `extract_json_attachment()` - parse JSON from email
+- `monitor_imap()` - connect, search for "[Verso Vet] Demande" emails, extract attachments
 
 ### Modules
 
 #### `modules/consultations/`
 
-**`router.py`** (23 lines)
-- `POST /consultations/submit` - receive from WordPress webhook
-- `GET /consultations` - list with filtering & pagination
-- `GET /consultations/{id}` - get details
-- `PATCH /consultations/{id}/status` - update status
-- `PATCH /consultations/{id}/integrate` - integrate into ERP
-- `GET /cron/imap-monitor` - IMAP webhook email monitoring
-- `GET /cron/pull-wordpress` - WordPress polling
+**`service.py`**
+- `store_consultation_from_json()` - parse JSON and store in database
+- Receives data from IMAP monitor
 
-**`security.py`** (75 lines) ✅
-- HMAC-SHA256 signature validation
-- `validate_hmac_signature()` - webhook authentication
-- `validate_file_token()`, `generate_file_token()` - secure file downloads
+**`routes.py`**
+- `GET /consultations` - list consultations with optional filtering
+- `GET /consultations/{id}` - get single consultation details
 
-**`files.py`** (85 lines) ✅
-- File download & storage operations
-- `download_and_store_files()` - WordPress to local storage
+**`security.py`**
+- `validate_file_token()` - HMAC token validation for file downloads
+- `generate_file_token()` - create secure download tokens
+
+**`files.py`**
 - `get_file_path()` - secure file retrieval with path traversal protection
-
-**`notifications.py`** (143 lines) ✅
-- Email template building
-- `build_notification_email()` - HTML + plaintext emails for consultations@verso-vet.com
-
-**`service.py`** (296 lines) ✅
-- Business logic orchestration
-- `integrate_consultation_with_erp()` - VetoPartner integration
-- `process_consultation_submission()` - async file download + email
-- `pull_consultations_from_wordpress()` - WordPress API polling
-
-**`erp.py`**
-- Client for erp-connector API
-- `search_client()`, `search_animal()`
-- `create_client()`, `create_animal()`
-- `create_consultation()`, `upload_document()`
+- File management and download handling
 
 #### `modules/dashboard/`
 
-**`router.py`**
-- `GET /dashboard` - serve HTML
+**`routes.py`**
+- `GET /dashboard` - serve dashboard HTML interface
 
 ---
 
 ## Request Flow
 
-### 1. WordPress → Skill (Webhook)
+### 1. WordPress Plugin Sends Email
 
 ```
-WordPress form
+verso-vet.com (WordPress form)
   ↓
-  upload files to /wp-content/uploads/consultations/{uuid}/
+verso-consultation-plugin generates UUID
   ↓
-  POST http://10.0.0.44:8092/consultations/submit
-    (HMAC signature: X-Verso-Signature header)
-    ConsultationRequest JSON
+Builds email with:
+  - To: consultations@verso-vet.com
+  - From: Verso Vet <consultations@verso-vet.com> (OVH SPF/DKIM)
+  - Subject: [Verso Vet] Demande {uuid} - {animal_nom}
+  - Body: Formatted text with consultation details
+  - Attachment: consultation.json (structured data)
   ↓
-Skill receives
-  ↓
-  validate HMAC
-  ↓
-  store in SQLite (status=pending)
-  ↓
-  return 201 (async processing)
+WordPress wp_mail() sends via PHP-FPM context
 ```
 
-### 2. Skill Processing (Async, Fire & Forget)
+### 2. IMAP Monitoring (Automatic)
 
 ```
-Post-receive:
+Skill runs /cron endpoint (every 60 seconds)
   ↓
-  generate file download URLs with HMAC tokens
+IMAP monitor connects to consultations@verso-vet.com
+  (credentials from Vault)
   ↓
-  build HTML email
+Search for unread emails with subject "[Verso Vet] Demande"
   ↓
-  send to consultations@verso-vet.com (via onyx-mailbox)
+For each email:
+  - Extract consultation.json attachment
+  - Parse JSON data
+  - Store in SQLite with status='pending'
+  - Mark email as read
   ↓
-  update status=received in SQLite
+Update dashboard with new consultations
 ```
 
-### 3. Dashboard → Integration
+### 3. Dashboard Display
 
 ```
-User clicks "Integrate" in dashboard
+User accesses http://10.0.0.44:8092/dashboard
   ↓
-  PATCH /consultations/{id}/integrate
+Dashboard queries /consultations endpoint
   ↓
-  search client in VetoPartner (erp-connector)
+Displays all stored consultations
   ↓
-  if found: use erp_client_id
+Can filter by status
   ↓
-  if not found: create client (POST /clients)
+Can view details and download files
+```
+
+### 4. Database Connection Cache
+
+```
+If dashboard shows stale data:
   ↓
-  search animal (GET /animals?client_id=X)
+POST /refresh-db to reset connection cache
   ↓
-  if found: use erp_animal_id
-  ↓
-  if not found: create animal (POST /animals)
-  ↓
-  create consultation (POST /consultations)
-  ↓
-  download files from WordPress
-  ↓
-  upload files to VetoPartner (POST /animals/{id}/documents/upload)
-  ↓
-  update SQLite (status=integrated, erp_*_id, integrated_at)
+Next query will read fresh data from database file
 ```
 
 ---
@@ -185,115 +161,117 @@ User clicks "Integrate" in dashboard
 ## Data Flow Diagram
 
 ```
-┌──────────────────┐
-│ verso-vet.com    │
-│ WordPress Form   │
-└────────┬─────────┘
-         │
-         │ 1. Upload files
-         │ 2. POST /submit (HMAC)
-         ↓
+┌──────────────────────────────┐
+│ verso-vet.com                │
+│ (WordPress consultation form)│
+└──────────┬───────────────────┘
+           │
+           │ 1. Form submission
+           │ 2. Send email to consultations@verso-vet.com
+           │    with consultation.json attachment
+           ↓
+┌──────────────────────────────┐
+│ OVH Email Server             │
+│ consultations@verso-vet.com  │
+│ (IMAP mailbox)               │
+└──────────┬───────────────────┘
+           │
+           │ 3. IMAP Monitor (every 60s via /cron)
+           ↓
 ┌──────────────────────────────┐
 │ consultation-requests (8092) │
-│ ┌─────────────────────────┐  │
-│ │ /consultations/submit   │  │
-│ └────────┬────────────────┘  │
+│ ┌──────────────────────────┐ │
+│ │ IMAP Monitor             │ │
+│ │ - Connect to IMAP        │ │
+│ │ - Search for emails      │ │
+│ │ - Extract JSON           │ │
+│ └────────┬─────────────────┘ │
 │          │                    │
 │          ↓                    │
-│ ┌─────────────────────────┐  │
-│ │ SQLite Database         │  │
-│ │ (pending)               │  │
-│ └────────┬────────────────┘  │
-│          │                    │
-│          │ 3. Async: Download│
-│          │    files, send    │
-│          │    email          │
-│          ↓                    │
-│ (status=received)            │
+│ ┌──────────────────────────┐ │
+│ │ SQLite Database          │ │
+│ │ - consultations table    │ │
+│ │ - status='pending'       │ │
+│ └──────────┬───────────────┘ │
+│            │                  │
+│            │ 4. Dashboard reads
+│            ↓                  │
+│ ┌──────────────────────────┐ │
+│ │ REST API (/consultations)│ │
+│ │ - Filter & pagination    │ │
+│ │ - File downloads         │ │
+│ └──────────────────────────┘ │
 └──────────┬───────────────────┘
            │
-           │ 4. User integrates
-           │    /integrate
            ↓
 ┌──────────────────────────────┐
-│ erp-connector (8101)         │
-│ - search_client              │
-│ - create_client              │
-│ - search_animal              │
-│ - create_animal              │
-│ - create_consultation        │
-│ - upload_documents           │
-└──────────┬───────────────────┘
-           │
-           ↓
-┌──────────────────────────┐
-│ VetoPartner (Firebird)   │
-│ CLIENTS                  │
-│ ANIMAUX                  │
-│ CONSULT                  │
-│ Documents/Images         │
-└──────────────────────────┘
+│ Web Dashboard                │
+│ http://10.0.0.44:8092/dash...│
+│ - View consultations         │
+│ - Download attachments       │
+│ - Track status               │
+└──────────────────────────────┘
 ```
 
 ---
 
 ## Statuses
 
-| Status | Meaning | Trigger |
-|--------|---------|---------|
-| `pending` | Created in DB, awaiting processing | Initial /submit |
-| `received` | Email sent, docs ready | Async after webhook |
-| `integrated` | Successfully integrated in VetoPartner | /integrate endpoint |
-| `rejected` | Rejected by user | Manual status update |
+| Status | Meaning | When Set |
+|--------|---------|----------|
+| `pending` | Received from email, stored in database | Initial storage from IMAP |
+| `reviewed` | User has reviewed the consultation | Manual status update |
+| `integrated` | Data integrated into external system | Manual status update |
+| `archived` | Closed/archived consultation | Manual status update |
 
 ---
 
 ## Security
 
-### HMAC Signatures
-- **Webhook validation**: `consultation_webhook_secret` from Vault
-- **File download tokens**: `consultation_file_secret` from Vault (7-day TTL)
-- Header: `X-Verso-Signature: HMAC-SHA256(...)`
+### IMAP Credentials
+- Stored securely in Onyx Vault
+- `imap_host`, `imap_username`, `imap_password`
+- Retrieved at runtime, never in code or config
 
-### Secrets (from Vault)
-- `consultation_webhook_secret` - WordPress → Skill
-- `consultation_file_secret` - File download tokens
-- `erp_api_key` - erp-connector authentication (if required)
-- `email_config` - SMTP configuration (future)
+### File Download Tokens
+- HMAC-SHA256 based tokens for secure file access
+- `consultation_file_secret` from Vault
+- 7-day TTL token validation
+- Path traversal protection with `realpath()`
 
-### Files
-- Stored locally on OnyxSoma: `/opt/onyx/data/consultation-requests/files/{uuid}/`
-- Downloaded from WordPress via HTTPS (FileResponse + token)
-- Not accessible without valid HMAC token
+### Database
+- SQLite local file storage
+- Proper user/group permissions on file system
+- No credentials stored in database
 
 ---
 
 ## Development Notes
 
 ### Current Status ✅ **PRODUCTION READY**
-- ✅ Database schema (SQLite with ThreadPoolExecutor)
-- ✅ Core models (Pydantic validation)
-- ✅ API endpoints (REST + webhook)
-- ✅ HMAC-SHA256 signature validation
-- ✅ File download & storage (secure tokens)
-- ✅ Email notifications (HTML templates)
-- ✅ ERP integration orchestration
-- ✅ WordPress polling (IMAP + REST)
-- ✅ Dashboard template
-- ✅ Forge validation (18/18 phases)
-- ✅ Production deployment (v1.0.18)
+- ✅ Email-based architecture (IMAP monitoring)
+- ✅ JSON attachment extraction from emails
+- ✅ SQLite database with async-safe ThreadPoolExecutor
+- ✅ Pydantic model validation
+- ✅ REST API endpoints (list, filter, download)
+- ✅ Web dashboard for viewing consultations
+- ✅ HMAC token validation for file downloads
+- ✅ Vault integration for secret management
+- ✅ OnyxSDK health status reporting
+- ✅ Database connection cache refresh endpoint
+- ✅ Production deployment on OnyxSoma
 
 ### Dependencies
 - FastAPI 0.104.1 + uvicorn 0.24.0
-- sqlite3 (built-in) + ThreadPoolExecutor
-- httpx 0.25.2 (async HTTP)
-- pydantic 2.5.0 (validation)
-- imapclient >=2.3.1 (email monitoring)
+- sqlite3 (built-in) + ThreadPoolExecutor (async-safe)
+- httpx 0.25.2 (async HTTP client)
+- pydantic 2.5.0 (data validation)
+- imapclient >=2.3.1 (IMAP email monitoring)
 - onyx-sdk (optional, graceful fallback)
 
-### Future Enhancements
-- Bulk integration
-- Status webhooks to WordPress
-- File cleanup (30-day retention)
-- Advanced filtering/search
-- Analytics dashboard
+### Key Design Decisions
+1. **ThreadPoolExecutor for SQLite**: Async-safe pattern for sync database operations
+2. **Global Connection Cache**: `_db_conn` with `reset_db()` for manual refresh
+3. **Email-based** not webhook-based: Simpler, no signature validation needed
+4. **IMAP Polling**: Scheduled via /cron endpoint (every 60s by default)
+5. **Local File Storage**: Consultations stored locally, not in external ERP initially

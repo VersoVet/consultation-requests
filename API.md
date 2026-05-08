@@ -1,12 +1,12 @@
-# Consultation Requests - API Reference v2.0
+# Consultation Requests - API Reference
 
-> **Status**: 🟢 **PRODUCTION** | Version 2.0.0 | Architecture: IMAP-based
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Architecture: IMAP-based
 
 ## Overview
 
-**Simplified architecture**: Emails → IMAP Monitor → Dashboard → Smart Association → ERP Integration
+**Email-based architecture**: verso-consultation-plugin sends emails to `consultations@verso-vet.com` → IMAP monitor fetches and parses → SQLite storage → REST API + Dashboard.
 
-No webhook required. Service automatically monitors `consultations@verso-vet.com` for incoming requests.
+No webhook required. Service automatically monitors the mailbox every 60 seconds via `/cron` endpoint.
 
 ## Base URL
 
@@ -46,17 +46,18 @@ List all consultation requests with optional filtering.
 **Query parameters**:
 
 - `status` (optional): Filter by status
-  - `unmatched` - Awaiting association with ERP animal
-  - `matched` - Associated with ERP animal, ready for integration
-  - `integrated` - Pushed to VetoPartner
-  - `rejected` - Rejected by user
+  - `pending` - Newly received from email
+  - `reviewed` - User has reviewed
+  - `integrated` - Integrated into external system
+  - `archived` - Closed/archived
 - `limit` (optional, default 100, max 500): Number of results
 - `offset` (optional, default 0): Pagination offset
 
 **Example**:
 
 ```bash
-curl "http://10.0.0.44:8092/consultations?status=unmatched&limit=50"
+curl "http://10.0.0.44:8092/consultations"
+curl "http://10.0.0.44:8092/consultations?status=pending&limit=50&offset=0"
 ```
 
 **Response**:
@@ -64,29 +65,22 @@ curl "http://10.0.0.44:8092/consultations?status=unmatched&limit=50"
 ```json
 {
   "count": 3,
-  "limit": 50,
+  "limit": 100,
   "offset": 0,
-  "status_filter": "unmatched",
   "consultations": [
     {
       "id": 1,
-      "uuid": "email_20260505_001",
-      "status": "unmatched",
-      "submitted_at": "2026-05-05T06:30:00+00:00",
-      "submitter_type": "email",
-      "data_json": "{...}",
-      "data": {
-        "animal_name": "Rex",
-        "animal_species": "Chien",
-        "owner_name": "Martin Pierre",
-        "owner_email": "pierre@example.com",
-        "owner_phone": "06.12.34.56.78",
-        "motif": "Boiterie antérieure",
-        "specialite": "orthopédie",
-        "urgence": true
-      },
+      "uuid": "verso-1715234567-a1b2c3d4",
+      "submitted_at": "2026-05-08T14:30:00+00:00",
+      "status": "pending",
+      "submitter_type": "owner",
+      "data_json": "{\"uuid\": \"verso-...\", \"owner_nom\": \"Dupont\", ...}",
+      "files_local": null,
+      "erp_client_id": null,
       "erp_animal_id": null,
-      "integrated_at": null
+      "erp_consult_id": null,
+      "integrated_at": null,
+      "notes": null
     }
   ]
 }
@@ -102,187 +96,183 @@ Get consultation request details by ID.
 curl http://10.0.0.44:8092/consultations/1
 ```
 
-**Response**: Full consultation object (see GET /consultations response)
-
----
-
-## Smart Association (ERP Search)
-
-### GET /consultations/{id}/search
-
-Propose animal matches from ERP for a consultation.
-
-Automatically searches ERP based on animal name and owner name from the email.
-
-**Query parameters**:
-
-- `search_query` (optional): Override auto-generated search query
-
-**Example**:
-
-```bash
-curl "http://10.0.0.44:8092/consultations/1/search"
-```
-
 **Response**:
 
 ```json
 {
-  "consultation_id": 1,
-  "search_query": "Rex Martin",
-  "email_data": {
-    "animal_name": "Rex",
-    "owner_name": "Martin Pierre",
-    "motif": "Boiterie antérieure"
-  },
-  "suggestions": [
-    {
-      "erp_animal_id": 123,
-      "animal_name": "Rex",
-      "race": "Labrador",
-      "owner": "Martin Pierre",
-      "species": "Chien",
-      "last_visit": "2026-04-15",
-      "weight": 32.5
-    },
-    {
-      "erp_animal_id": 124,
-      "animal_name": "Bella",
-      "race": "Labrador",
-      "owner": "Martin Jean",
-      "species": "Chien",
-      "last_visit": "2026-03-20",
-      "weight": 28.0
-    }
-  ]
-}
-```
-
-### GET /search
-
-Direct search in ERP without consultation context.
-
-**Query parameters**:
-
-- `q` (required): Search query (animal name or owner name)
-
-**Example**:
-
-```bash
-curl "http://10.0.0.44:8092/search?q=Rex"
-```
-
-**Response**:
-
-```json
-{
-  "query": "Rex",
-  "count": 2,
-  "matches": [
-    {
-      "erp_animal_id": 123,
-      "animal_name": "Rex",
-      "race": "Labrador",
-      "owner": "Martin Pierre",
-      "species": "Chien"
-    }
-  ]
-}
-```
-
----
-
-## Integration Endpoints
-
-### POST /consultations/{id}/integrate
-
-Integrate consultation into VetoPartner ERP.
-
-Two options:
-1. **Match existing animal**: Provide `erp_animal_id`
-2. **Create new client+animal**: Set `create_new_client=true`
-
-**Query parameters**:
-
-- `erp_animal_id` (optional): Animal ID from ERP search results
-- `create_new_client` (optional): If true, create new client and animal in ERP
-
-**Example 1: Match existing animal**:
-
-```bash
-curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?erp_animal_id=123"
-```
-
-**Example 2: Create new client+animal**:
-
-```bash
-curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?create_new_client=true"
-```
-
-**Response**:
-
-```json
-{
-  "success": true,
   "id": 1,
-  "erp_consult_id": 5678,
-  "message": "Integrated into VetoPartner"
+  "uuid": "verso-1715234567-a1b2c3d4",
+  "submitted_at": "2026-05-08T14:30:00+00:00",
+  "status": "pending",
+  "submitter_type": "owner",
+  "data_json": "{\"uuid\": \"verso-1715234567-a1b2c3d4\", \"submitted_at\": \"2026-05-08T14:30:00+00:00\", \"owner_nom\": \"Dupont\", \"owner_prenom\": \"Jean\", \"owner_email\": \"jean@example.com\", \"owner_telephone\": \"+33612345678\", \"owner_address\": \"123 Rue de Paris, 75001 Paris\", \"vet_nom\": \"Smith\", \"vet_prenom\": \"Dr\", \"vet_clinique\": \"Clinique Vétérinaire Paris\", \"vet_email\": \"doctor@clinic.fr\", \"vet_telephone\": \"+33145678901\", \"animal_nom\": \"Rex\", \"animal_espece\": \"Chien\", \"animal_race\": \"Labrador\", \"motif\": \"Boiterie antérieure droite\"}",
+  "files_local": null,
+  "erp_client_id": null,
+  "erp_animal_id": null,
+  "erp_consult_id": null,
+  "integrated_at": null,
+  "notes": null
 }
 ```
 
 ---
 
-## Workflow Example
+## System Endpoints
+
+### GET /health
+
+Health check endpoint with service status.
+
+**Example**:
 
 ```bash
-# 1. List unmatched consultations (from emails)
-curl "http://10.0.0.44:8092/consultations?status=unmatched"
+curl http://10.0.0.44:8092/health
+```
 
-# 2. Get details of a consultation
+**Response**:
+
+```json
+{
+  "status": "ok",
+  "service": "consultation-requests",
+  "version": "1.0.18",
+  "timestamp": "2026-05-08T22:30:00+00:00"
+}
+```
+
+### GET /cron
+
+Periodic task endpoint. Called by the Onyx scheduler every 60 seconds.
+
+Triggers IMAP monitoring to fetch new consultation emails.
+
+**Example**:
+
+```bash
+curl http://10.0.0.44:8092/cron
+```
+
+**Response**:
+
+```json
+{
+  "status": "cron_executed"
+}
+```
+
+### POST /refresh-db
+
+Refresh the database connection cache. Useful when the database file has been modified externally and the skill's cached connection is stale.
+
+**Example**:
+
+```bash
+curl -X POST http://10.0.0.44:8092/refresh-db
+```
+
+**Response**:
+
+```json
+{
+  "status": "success",
+  "message": "Database connection reset and will reconnect on next query"
+}
+```
+
+---
+
+## Dashboard
+
+### GET /dashboard
+
+Web dashboard interface for viewing and managing consultations.
+
+**Example**:
+
+```bash
+open http://10.0.0.44:8092/dashboard
+```
+
+Returns HTML page with:
+- List of all consultations
+- Filter by status
+- View consultation details
+- Download attachments (if any)
+
+---
+
+## Typical Workflow
+
+```bash
+# 1. Service automatically monitors emails every 60 seconds
+#    (via /cron endpoint called by scheduler)
+
+# 2. Check current consultations
+curl "http://10.0.0.44:8092/consultations"
+
+# 3. Get details of a specific consultation
 curl http://10.0.0.44:8092/consultations/1
 
-# 3. Search for animal matches in ERP
-curl "http://10.0.0.44:8092/consultations/1/search"
+# 4. View in dashboard
+open http://10.0.0.44:8092/dashboard
 
-# 4a. OPTION A: Integrate with existing animal
-curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?erp_animal_id=123"
+# 5. If dashboard shows stale data, refresh connection
+curl -X POST http://10.0.0.44:8092/refresh-db
 
-# 4b. OPTION B: Create new client+animal
-curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?create_new_client=true"
-
-# 5. Verify integration
-curl http://10.0.0.44:8092/consultations/1
-# status should now be "integrated"
+# 6. Query again to see fresh data
+curl http://10.0.0.44:8092/consultations
 ```
 
 ---
 
 ## Email Monitoring (Automatic)
 
-The service automatically monitors `consultations@verso-vet.com` inbox every minute.
+The service automatically monitors `consultations@verso-vet.com` inbox every 60 seconds via the `/cron` endpoint.
 
-When an email is received:
+### Flow:
 
-1. ✅ Email is parsed for consultation data
-2. ✅ Data is stored in SQLite (status=unmatched)
-3. ✅ User sees new consultation in dashboard
-4. ✅ User searches for matching animals
-5. ✅ User selects match or creates new client
-6. ✅ Consultation is pushed to VetoPartner with all attachments
+1. ✅ **Scheduler calls /cron** every 60 seconds
+2. ✅ **IMAP connects** to consultations@verso-vet.com (credentials from Vault)
+3. ✅ **Search for emails** with subject containing "[Verso Vet] Demande"
+4. ✅ **Extract JSON attachment** (consultation.json) from each email
+5. ✅ **Parse JSON data** with consultation details
+6. ✅ **Store in SQLite** database with status='pending'
+7. ✅ **Mark email as read** in IMAP
 
-**No configuration needed** - just send emails to `consultations@verso-vet.com`
+### No configuration needed
+
+Just have verso-consultation-plugin send emails to `consultations@verso-vet.com` with JSON attachment.
+
+---
+
+## Consultation Data Format
+
+Emails from verso-consultation-plugin contain a JSON attachment with this structure:
+
+```json
+{
+  "uuid": "verso-1715234567-a1b2c3d4",
+  "submitted_at": "2026-05-08T14:30:00+00:00",
+  "owner_nom": "Dupont",
+  "owner_prenom": "Jean",
+  "owner_email": "jean@example.com",
+  "owner_telephone": "+33612345678",
+  "owner_address": "123 Rue de Paris, 75001 Paris",
+  "vet_nom": "Smith",
+  "vet_prenom": "Dr",
+  "vet_clinique": "Clinique Vétérinaire Paris",
+  "vet_email": "doctor@clinic.fr",
+  "vet_telephone": "+33145678901",
+  "animal_nom": "Rex",
+  "animal_espece": "Chien",
+  "animal_race": "Labrador",
+  "motif": "Boiterie antérieure droite"
+}
+```
 
 ---
 
 ## Error Responses
-
-### 400 Bad Request
-
-```json
-{
-  "detail": "Either erp_animal_id or create_new_client required"
-}
-```
 
 ### 404 Not Found
 
@@ -296,64 +286,50 @@ When an email is received:
 
 ```json
 {
-  "detail": "Integration failed"
+  "detail": "Internal server error message"
 }
 ```
 
 ---
 
-## Data Models
+## Database Schema
 
-### Consultation Status Values
+Consultations are stored in SQLite with this schema:
 
-- `unmatched` - Waiting for user to find/create ERP animal
-- `matched` - Animal matched with ERP
-- `integrated` - Pushed to VetoPartner
-- `rejected` - User rejected / manual deletion
-
-### Email Data Extracted
-
-Emails to `consultations@verso-vet.com` should contain (patterns extracted automatically):
-
-```
-Animal: [animal name]
-Espèce: [species]
-Propriétaire: [owner name]
-Email: [optional owner email]
-Téléphone: [optional phone]
-Motif: [consultation reason]
-Spécialité: [veterinary specialty]
-Urgent: [yes/no]
+```sql
+CREATE TABLE consultations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid TEXT UNIQUE NOT NULL,
+    submitted_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    submitter_type TEXT NOT NULL,
+    data_json TEXT NOT NULL,
+    files_local TEXT,
+    erp_client_id INTEGER,
+    erp_animal_id INTEGER,
+    erp_consult_id INTEGER,
+    integrated_at TEXT,
+    notes TEXT
+)
 ```
 
-Attachments are automatically collected and will be uploaded to VetoPartner.
+**Fields**:
+- `uuid` - Unique identifier from email
+- `submitted_at` - ISO format submission timestamp
+- `status` - Current status (pending, reviewed, integrated, archived)
+- `submitter_type` - Type of submitter (owner, vet)
+- `data_json` - Complete JSON consultation data
+- `files_local` - JSON list of local file paths (if any)
+- `erp_*_id` - External system IDs after integration
+- `integrated_at` - Integration timestamp
+- `notes` - Manual notes
 
 ---
 
-## Integration with VetoPartner
+## Security
 
-The `/integrate` endpoint orchestrates:
-
-1. **Search/Create Client**:
-   - If `create_new_client=true`: POST /clients
-   - Otherwise: Uses existing client from matched animal
-
-2. **Search/Create Animal**:
-   - If `create_new_client=true`: POST /animals
-   - Otherwise: Uses matched `erp_animal_id`
-
-3. **Create Consultation**:
-   - POST /consultations with motif, specialite, urgence
-
-4. **Upload Documents**:
-   - POST /animals/{id}/documents/upload for each email attachment
-
----
-
-## Security Notes
-
-- ✅ No webhook secrets needed
-- ✅ No HMAC signatures required
-- ✅ IMAP credentials stored securely in Vault
-- ✅ Email attachments scanned before upload
-- ✅ All operations logged with consultation ID
+- ✅ **IMAP credentials** stored in Onyx Vault (not in code)
+- ✅ **File downloads** protected by HMAC-SHA256 token validation
+- ✅ **Path traversal** protection with realpath() validation
+- ✅ **Database** local SQLite with proper file permissions
+- ✅ **All operations** logged with consultation UUID

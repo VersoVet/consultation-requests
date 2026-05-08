@@ -9,9 +9,7 @@ from src.config import logger
 from src.core.database import (
     get_consultation,
     list_consultations,
-    update_consultation_status,
 )
-from src.core.models import ConsultationStatus
 from src.modules.consultations.integration import (
     create_new_client_and_animal,
     integrate_with_erp,

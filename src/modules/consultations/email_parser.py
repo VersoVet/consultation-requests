@@ -2,7 +2,6 @@
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -12,8 +11,8 @@ class ParsedConsultation:
     animal_name: str
     animal_species: str
     owner_name: str
-    owner_email: Optional[str]
-    owner_phone: Optional[str]
+    owner_email: str | None
+    owner_phone: str | None
     motif: str
     specialite: str
     urgence: bool
@@ -22,7 +21,7 @@ class ParsedConsultation:
     raw_text: str
 
 
-def parse_consultation_email(subject: str, body: str, from_addr: str) -> Optional[ParsedConsultation]:
+def parse_consultation_email(subject: str, body: str, from_addr: str) -> ParsedConsultation | None:
     """Parse consultation email to extract structured data.
 
     Args:
@@ -71,5 +70,5 @@ def parse_consultation_email(subject: str, body: str, from_addr: str) -> Optiona
             raw_text=body,
         )
 
-    except Exception as e:
+    except Exception:
         return None

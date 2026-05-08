@@ -1,7 +1,6 @@
 """Search animals/clients in ERP."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -15,12 +14,12 @@ class AnimalMatch:
     erp_animal_id: int
     animal_name: str
     species: str
-    race: Optional[str]
+    race: str | None
     owner_name: str
     owner_id: int
-    last_visit: Optional[str]
-    age: Optional[int]
-    weight: Optional[float]
+    last_visit: str | None
+    age: int | None
+    weight: float | None
 
 
 async def search_animals_in_erp(
@@ -76,7 +75,7 @@ async def search_animals_in_erp(
 async def get_animal_details(
     erp_animal_id: int,
     erp_url: str = "http://10.0.0.44:8101",
-) -> Optional[dict]:
+) -> dict | None:
     """Get detailed info for an animal from ERP.
 
     Args:
