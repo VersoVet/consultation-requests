@@ -1,5 +1,6 @@
 """Business logic for consultation processing and ERP integration."""
 
+import json
 from datetime import UTC, datetime
 
 import httpx
@@ -294,3 +295,36 @@ async def pull_consultations_from_wordpress(uuid: str | None = None) -> list[str
     except Exception as e:
         logger.error(f"Error pulling consultations from WordPress: {e}")
         return []
+
+
+async def store_consultation_from_json(data: dict) -> bool:
+    """Store a consultation received via email JSON attachment.
+
+    Args:
+        data: Parsed consultation dict from email attachment
+
+    Returns:
+        True if stored successfully
+    """
+    try:
+        uuid = data.get("uuid", "")
+        if not uuid:
+            logger.error("No UUID in consultation JSON")
+            return False
+
+        submitted_at = data.get("submitted_at", datetime.now(UTC).isoformat())
+        data_json = json.dumps(data, ensure_ascii=False)
+
+        consultation_id = await create_consultation(
+            uuid=uuid,
+            submitted_at=submitted_at,
+            submitter_type="owner",
+            data_json=data_json,
+        )
+        await update_consultation_status(consultation_id, "received")
+        logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error storing consultation from JSON: {e}")
+        return False

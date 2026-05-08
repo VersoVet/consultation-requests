@@ -1,7 +1,7 @@
-"""IMAP monitoring for webhook emails from verso-vet.com."""
+"""IMAP monitoring for consultation emails from verso-vet.com."""
 
 import email
-import re
+import json
 
 import imapclient
 
@@ -32,28 +32,33 @@ async def get_imap_credentials() -> dict:
         return {}
 
 
-async def extract_uuid_from_email(email_subject: str) -> str:
-    """Extract UUID from email subject.
-
-    Expected format: "VERSO_WEBHOOK UUID:xxxxx TYPE:xxx ANIMAL:xxx"
+def extract_json_attachment(msg: email.message.Message) -> dict | None:
+    """Extract consultation data from JSON email attachment.
 
     Args:
-        email_subject: Email subject line
+        msg: Parsed email message
 
     Returns:
-        UUID if found, empty string otherwise
+        Parsed consultation dict, or None if not found
     """
-    match = re.search(r"UUID:([a-zA-Z0-9\-]+)", email_subject)
-    if match:
-        return match.group(1)
-    return ""
+    for part in msg.walk():
+        filename = part.get_filename() or ""
+        disposition = part.get("Content-Disposition", "")
+        if filename.endswith(".json") and "attachment" in disposition:
+            payload = part.get_payload(decode=True)
+            if payload:
+                try:
+                    return json.loads(payload.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    return None
+    return None
 
 
 async def monitor_imap() -> list[str]:
-    """Monitor IMAP mailbox for webhook emails.
+    """Monitor IMAP mailbox for consultation emails.
 
-    Connects to IMAP server, retrieves unread emails with VERSO_WEBHOOK
-    subject, extracts UUIDs, and triggers consultation processing.
+    Connects to IMAP server, retrieves unread emails with "[Verso Vet] Demande"
+    subject, extracts JSON attachment, and stores consultation data.
 
     Returns:
         List of processed UUIDs
@@ -78,11 +83,11 @@ async def monitor_imap() -> list[str]:
 
         logger.info("Connected to IMAP")
 
-        # Search for unread VERSO_WEBHOOK emails
+        # Search for unread consultation emails
         search_criteria = [
             b"UNSEEN",
             b"SUBJECT",
-            b"VERSO_WEBHOOK",
+            b"[Verso Vet] Demande",
         ]
 
         uids = imap.search(search_criteria)
@@ -104,30 +109,31 @@ async def monitor_imap() -> list[str]:
                 msg_bytes = email_data[uid][b"RFC822"]
                 msg = email.message_from_bytes(msg_bytes)
 
-                # Extract UUID from subject
+                # Extract JSON attachment
                 subject = msg.get("Subject", "")
-                uuid = await extract_uuid_from_email(subject)
+                data = extract_json_attachment(msg)
 
-                if not uuid:
-                    logger.warning(f"Could not extract UUID from subject: {subject}")
+                if not data:
+                    logger.warning(f"No JSON attachment in: {subject}")
                     imap.flag([uid], [r"\Seen"])
                     continue
 
-                logger.info(f"Processing webhook for UUID: {uuid}")
+                uuid = data.get("uuid", "unknown")
+                logger.info(f"Processing consultation {uuid} from email")
 
                 # Import here to avoid circular imports
                 from src.modules.consultations.service import (
-                    pull_consultations_from_wordpress,
+                    store_consultation_from_json,
                 )
 
-                # Fetch and process consultation from WordPress
-                result = await pull_consultations_from_wordpress(uuid)
+                # Store consultation from JSON data
+                result = await store_consultation_from_json(data)
 
                 if result:
                     processed_uuids.append(uuid)
-                    logger.info(f"Successfully processed consultation {uuid}")
+                    logger.info(f"Stored consultation {uuid} from email")
                 else:
-                    logger.warning(f"Failed to process consultation {uuid}")
+                    logger.warning(f"Failed to store consultation {uuid}")
 
                 # Mark email as read
                 imap.flag([uid], [r"\Seen"])
