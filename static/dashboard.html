@@ -234,12 +234,12 @@
 
             noResults.style.display = 'none';
             tbody.innerHTML = consultations.map(c => {
-                const animal = c.data?.animal?.nom || 'Unknown';
+                const animal = c.data?.animal_nom || 'Unknown';
                 let owner = '-';
-                if (c.data?.owner) {
-                    owner = `${c.data.owner.nom || ''} ${c.data.owner.prenom || ''}`.trim();
-                } else if (c.data?.vet) {
-                    owner = `${c.data.vet.nom || ''} ${c.data.vet.prenom || ''}`.trim();
+                if (c.data?.owner_nom) {
+                    owner = `${c.data.owner_prenom || ''} ${c.data.owner_nom || ''}`.trim();
+                } else if (c.data?.vet_nom) {
+                    owner = `${c.data.vet_prenom || ''} ${c.data.vet_nom || ''}`.trim();
                 }
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
@@ -282,9 +282,26 @@
 
             currentDetail = consultation;
             const data = consultation.data || {};
-            const animal = data.animal || {};
-            const owner = data.owner || {};
-            const vet = data.vet || {};
+            const animal = {
+                nom: data.animal_nom,
+                espece: data.animal_espece,
+                race: data.animal_race,
+                sexe: data.animal_sexe
+            };
+            const owner = {
+                nom: data.owner_nom,
+                prenom: data.owner_prenom,
+                email: data.owner_email,
+                telephone: data.owner_telephone,
+                address: data.owner_address
+            };
+            const vet = {
+                nom: data.vet_nom,
+                prenom: data.vet_prenom,
+                clinique: data.vet_clinique,
+                email: data.vet_email,
+                telephone: data.vet_telephone
+            };
 
             let filesHtml = '';
             if (consultation.files_local && consultation.files_local.length > 0) {
@@ -309,7 +326,7 @@
 
             // Build contact section based on submitter type
             let contactHtml = '';
-            if (data.submitter_type === 'vet' && vet) {
+            if (data.submitter_type === 'vet' && vet.nom) {
                 contactHtml = `
                     <div class="col-md-6">
                         <h6><i class="bi bi-hospital"></i> Veterinary Referrer</h6>
@@ -331,11 +348,11 @@
                         <h6><i class="bi bi-person"></i> Owner</h6>
                         <dl class="row">
                             <dt class="col-sm-4">Name:</dt>
-                            <dd class="col-sm-8">${owner && owner.nom ? owner.nom + ' ' + (owner.prenom || '') : '-'}</dd>
+                            <dd class="col-sm-8">${owner.nom ? owner.nom + ' ' + (owner.prenom || '') : '-'}</dd>
                             <dt class="col-sm-4">Email:</dt>
-                            <dd class="col-sm-8">${owner && owner.email ? `<a href="mailto:${owner.email}">${owner.email}</a>` : '-'}</dd>
+                            <dd class="col-sm-8">${owner.email ? `<a href="mailto:${owner.email}">${owner.email}</a>` : '-'}</dd>
                             <dt class="col-sm-4">Phone:</dt>
-                            <dd class="col-sm-8">${owner && owner.telephone ? owner.telephone : '-'}</dd>
+                            <dd class="col-sm-8">${owner.telephone || '-'}</dd>
                         </dl>
                     </div>
                 `;
