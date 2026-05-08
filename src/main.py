@@ -102,10 +102,34 @@ async def health() -> HealthResponse:
 
 @app.get("/cron")
 async def cron() -> dict:
-    """Periodic task - publish WORKING status.
+    """Periodic task - IMAP monitoring and status reporting.
 
-    Called by Onyx scheduler every minute to report processing status.
+    Called by Onyx scheduler every minute to:
+    1. Monitor IMAP for consultation emails
+    2. Report WORKING status to Onyx
     """
+    from src.core.imap_monitor import monitor_imap
+
+    tasks_executed = []
+
+    # Run IMAP monitoring
+    try:
+        uuids = await monitor_imap()
+        tasks_executed.append({
+            "task_id": "imap-monitor",
+            "status": "success",
+            "processed": len(uuids)
+        })
+        logger.info(f"IMAP monitoring: {len(uuids)} consultations processed")
+    except Exception as e:
+        logger.error(f"IMAP monitoring failed: {e}")
+        tasks_executed.append({
+            "task_id": "imap-monitor",
+            "status": "failed",
+            "error": str(e)
+        })
+
+    # Report WORKING status
     if HAS_SDK and onyx:
         try:
             from onyx_sdk import SkillStatus
@@ -115,7 +139,7 @@ async def cron() -> dict:
         except Exception as e:
             logger.warning(f"Could not publish WORKING status: {e}")
 
-    return {"status": "cron_executed"}
+    return {"status": "success", "tasks": tasks_executed}
 
 
 @app.post("/refresh-db")

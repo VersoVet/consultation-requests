@@ -132,5 +132,11 @@
       "publish_status": true,
       "channel": "onyx:skill:status"
     }
+  },
+  "dashboard": {
+    "enabled": true,
+    "url": "/dashboard",
+    "icon": "stethoscope",
+    "title": "Consultation Requests"
   }
 }
