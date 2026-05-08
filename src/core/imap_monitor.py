@@ -19,13 +19,18 @@ async def get_imap_credentials() -> dict:
         imap_host = await get_secret("imap_host")
         imap_user = await get_secret("imap_username")
         imap_pass = await get_secret("imap_password")
-        webhook_email = await get_secret("verso_webhook_email")
+
+        # verso_webhook_email is optional, use fallback if not found
+        try:
+            webhook_email = await get_secret("verso_webhook_email")
+        except Exception:
+            webhook_email = "consultations@verso-vet.com"
 
         return {
             "host": imap_host,
             "username": imap_user,
             "password": imap_pass,
-            "webhook_email": webhook_email or "consultations+webhook@verso-vet.com",
+            "webhook_email": webhook_email,
         }
     except Exception as e:
         logger.error(f"Error getting IMAP credentials from Vault: {e}")
