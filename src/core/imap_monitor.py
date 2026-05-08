@@ -141,7 +141,7 @@ async def monitor_imap() -> list[str]:
                     logger.warning(f"Failed to store consultation {uuid}")
 
                 # Mark email as read
-                imap.flag([uid], [r"\Seen"])
+                imap.add_flags([uid], [r"\Seen"])
 
             except Exception as e:
                 logger.error(f"Error processing email: {e}")
