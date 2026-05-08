@@ -51,7 +51,7 @@ def extract_json_attachment(msg: email.message.Message) -> dict | None:
         disposition = part.get("Content-Disposition", "")
         if filename.endswith(".json") and "attachment" in disposition:
             payload = part.get_payload(decode=True)
-            if payload:
+            if payload and isinstance(payload, bytes):
                 try:
                     return json.loads(payload.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):

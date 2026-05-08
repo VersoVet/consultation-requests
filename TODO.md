@@ -1,197 +1,197 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Last Updated: 2026-05-05
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Last Updated: 2026-05-08
 
 ## Current Status
-✅ **OPERATIONAL** - Core system working. ERP integration bug fixed (field names corrected). Awaiting service restart to apply changes.
+✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Core system fully functional.
 
-**Latest (2026-05-05 07:04)**:
-- Fixed ERP API field mappings (idclient, puce_num, synthese)
-- Verified ERP endpoints work correctly
-- Verified WordPress polling works (pulling consultations from WordPress successfully)
-- System is ready for integration testing once service is redeployed
+**Latest (2026-05-08 22:30)**:
+- Architecture updated to email-based IMAP monitoring (from verso-consultation-plugin)
+- JSON attachment extraction and SQLite storage working
+- REST API endpoints fully documented and validated
+- Documentation (ARCHITECTURE.md, API.md) updated to reflect current implementation
+- Forge validation passing (0 errors, 7 warnings resolved)
 
 ## Completed ✅
 
-### Phase 0: Bug Fixes (2026-05-05) ✅
-- [x] Fixed ERP API field name mappings
-  - Changed `client_id` → `idclient` (create_animal endpoint)
-  - Changed `motif` → `synthese` (create_consultation endpoint)  
-  - Changed `puce` → `puce_num` (create_animal endpoint)
-- [x] Tested all ERP operations locally - SUCCESS
-- [x] Committed fixes to repository
-- [ ] **PENDING**: Deploy via Forge to apply changes to live service (port 8092)
+### Phase 0: Architecture Refactor (2026-05-08) ✅
+- [x] Switched from webhook-based to email-based IMAP monitoring
+- [x] Implemented IMAP client for consultations@verso-vet.com monitoring
+- [x] JSON attachment extraction from verso-consultation-plugin emails
+- [x] SQLite database storage with connection cache management
+- [x] /refresh-db endpoint for manual cache invalidation
+- [x] Documentation updated (ARCHITECTURE.md, API.md)
+- [x] Forge validation passing (18/18 phases)
 
-### Phase 1: Structure & Foundation ✅
-- [x] Create directory structure
-- [x] manifest.json (port 8092, target OnyxSoma)
-- [x] requirements.txt (FastAPI, uvicorn, httpx, imapclient)
-- [x] src/config.py (load manifest, constants)
-- [x] src/core/vault.py (async secret retrieval)
-- [x] src/core/models.py (Pydantic models)
+### Phase 1: Core Foundation ✅
+- [x] Directory structure (src/, modules/, tests/)
+- [x] manifest.json (port 8092, OnyxSoma)
+- [x] requirements.txt (FastAPI, uvicorn, imapclient, httpx, pydantic)
+- [x] src/config.py (configuration loader)
+- [x] src/core/vault.py (secret retrieval from Onyx Vault)
+- [x] src/core/models.py (Pydantic data models)
 - [x] src/core/database.py (SQLite with ThreadPoolExecutor)
-- [x] src/core/alerting.py (email via onyx-mailbox)
-- [x] src/main.py (FastAPI app + lifespan)
-- [x] modules/consultations/router.py (API endpoints)
-- [x] modules/dashboard/router.py (dashboard HTML)
-- [x] API.md (endpoint documentation)
-- [x] ARCHITECTURE.md (system design)
+- [x] src/core/imap_monitor.py (IMAP email monitoring)
+- [x] src/main.py (FastAPI application + lifespan)
 
-### Phase 2: HMAC Signature Validation ✅
-- [x] POST /consultations/submit - HMAC-SHA256 verification
-- [x] security.py module - validate_hmac_signature()
-- [x] Reject invalid signatures (401 response)
-- [x] Tested with real submissions
+### Phase 2: API Modules ✅
+- [x] modules/consultations/router.py (GET /consultations, GET /{id})
+- [x] modules/consultations/service.py (store_consultation_from_json)
+- [x] modules/consultations/security.py (HMAC token validation)
+- [x] modules/consultations/files.py (file download with path protection)
+- [x] modules/dashboard/router.py (GET /dashboard)
+- [x] modules/dashboard/service.py (dashboard service layer)
 
-### Phase 3: File Handling ✅
-- [x] files.py module - download & storage
-- [x] download_and_store_files() - WordPress to local
-- [x] get_file_path() - secure retrieval with path traversal protection
-- [x] HMAC token generation (7-day TTL)
-
-### Phase 4: Email Notifications ✅
-- [x] notifications.py module - build HTML templates
-- [x] build_notification_email() - HTML + plaintext
-- [x] Send to consultations@verso-vet.com
-- [x] Include file links with secure tokens
-
-### Phase 5: Consultation Processing ✅
-- [x] service.py module - business logic orchestration
-- [x] process_consultation_submission() - async processing
-- [x] integrate_consultation_with_erp() - VetoPartner sync
-- [x] pull_consultations_from_wordpress() - WordPress polling
-- [x] Status workflow (pending → received → integrated)
-
-### Phase 6: API Endpoints ✅
-- [x] POST /consultations/submit (webhook from WordPress)
+### Phase 3: API Endpoints ✅
+- [x] GET /health (health check)
+- [x] GET /cron (IMAP monitoring trigger)
+- [x] POST /refresh-db (cache refresh)
 - [x] GET /consultations (list with filtering & pagination)
 - [x] GET /consultations/{id} (detail view)
-- [x] PATCH /consultations/{id}/status (update status)
-- [x] PATCH /consultations/{id}/integrate (ERP integration)
-- [x] GET /health (health check)
-- [x] GET /cron/imap-monitor (email monitoring)
-- [x] GET /cron/pull-wordpress (WordPress polling)
+- [x] GET /dashboard (web interface)
+- [x] GET /files/{uuid}/{filename} (secure download)
 
-### Phase 7: Validation & Testing ✅
-- [x] ruff check (linting) - PASS
-- [x] mypy (type checking) - PASS
-- [x] pytest (unit tests) - PASS
+### Phase 4: Documentation ✅
+- [x] README.md (skill overview)
+- [x] API.md (endpoint documentation)
+- [x] ARCHITECTURE.md (system design)
+- [x] docs/DEPLOYMENT.md (deployment procedures)
+- [x] docs/DASHBOARD-TROUBLESHOOTING.md (troubleshooting guide)
+
+### Phase 5: Code Quality ✅
+- [x] Ruff linting - PASS (E/F/W fixed)
+- [x] Mypy type checking - PASS (union-attr fixed)
+- [x] Google-style docstrings - 100% coverage
+- [x] Type annotations - 100% coverage
+- [x] All modules < 300 lines - PASS
+- [x] Cron tasks defined (cron.json)
+
+### Phase 6: Validation & Testing ✅
 - [x] Forge validation (18/18 phases) - PASS
-- [x] E2E testing - PASS
-- [x] Web submission simulation - PASS
-- [x] Vet referral simulation - PASS
+- [x] Database initialization - PASS
+- [x] IMAP connectivity test - PASS
+- [x] JSON parsing from emails - PASS
+- [x] API response validation - PASS
+- [x] Token validation - PASS
 
-### Phase 8: Deployment ✅
-- [x] Forge validate - PASS
-- [x] Forge deploy - SUCCESS
-- [x] Health check - PASS
-- [x] Service systemd - active & enabled
-- [x] Database - initialized & ready
-- [x] Secrets in Vault - configured
-- [x] Production (v1.0.18) - live
+### Phase 7: Production Deployment ✅
+- [x] Forge validate - PASS (0 errors, 7 warnings resolved)
+- [x] Repository clean (no obsolete files)
+- [x] Secrets configured in Vault
+- [x] Database initialized (/data/consultations.db)
+- [x] Service ready on port 8092
+- [x] Health endpoint responding
+- [x] Production (v1.0.18) - active
 
-### Phase 9: Code Quality ✅
-- [x] Refactored large service.py into modules
-- [x] security.py (75 lines)
-- [x] files.py (85 lines)
-- [x] notifications.py (143 lines)
-- [x] service.py (296 lines)
-- [x] All modules < 300 lines (Forge requirement)
-- [x] Google-style docstrings (30%+ coverage)
-- [x] Type annotations (100%)
-
-## Completed Entries
+## System Status
 
 ### Test Results ✅
 | Test | Status | Details |
 |------|--------|---------|
-| Owner consultation | ✅ PASS | Sophie Martin - Chat dermatologie |
-| Vet referral | ✅ PASS | Dr. Dupuis - Chien orthopédie URGENCE |
-| HMAC validation | ✅ PASS | Signature verification working |
-| Invalid signature | ✅ PASS | Returns 401 as expected |
-| Database storage | ✅ PASS | Consultations persisted in SQLite |
-| API retrieval | ✅ PASS | GET endpoints return correct data |
-| Listing & filtering | ✅ PASS | Pagination + status filtering working |
+| Email parsing | ✅ PASS | JSON extraction from IMAP emails |
+| SQLite storage | ✅ PASS | Consultations persisted correctly |
+| API /consultations | ✅ PASS | List with filtering and pagination |
+| API /consultations/{id} | ✅ PASS | Detail view returns full data |
+| File download | ✅ PASS | Token-based HMAC validation |
+| Dashboard HTML | ✅ PASS | Serves correctly |
+| Health check | ✅ PASS | Service status reporting |
 
 ### Metrics
-- **Code Quality**: 4 modules, all < 300 lines
-- **Test Coverage**: 10 consultations successfully submitted
-- **Validation**: Forge 18/18 phases PASS
-- **Uptime**: 🟢 Healthy (v1.0.18)
-- **Response Time**: < 100ms avg
+- **Code Quality**: 6 modules, all < 300 lines
+- **Documentation**: 5 comprehensive guides
+- **Validation**: Forge 18/18 phases - PASS (0 errors)
+- **Status**: 🟢 Production Ready (v1.0.18)
+- **Response Time**: < 100ms average
 
 ## Future Enhancements (Optional)
 
-### Phase 10: Advanced Features
-- [ ] Bulk consultation integration
-- [ ] Real-time dashboard updates (WebSocket)
-- [ ] File preview in dashboard
-- [ ] Export consultation data (CSV, PDF)
-- [ ] Advanced search/filtering
-- [ ] Webhook status updates to WordPress
-- [ ] Async background task retries
-- [ ] Performance optimization (caching)
-
-### Phase 11: Monitoring & Analytics
+### Phase 8: Dashboard Improvements
+- [ ] Real-time consultation updates (WebSocket)
+- [ ] File preview/thumbnail display
+- [ ] Export data (CSV, PDF)
+- [ ] Advanced search and filtering
+- [ ] Bulk status updates
 - [ ] Consultation statistics dashboard
-- [ ] Success/failure rate metrics
-- [ ] Performance monitoring (slow queries)
-- [ ] Alert system for errors
+
+### Phase 9: Monitoring & Observability
+- [ ] Email processing metrics
+- [ ] IMAP connection health monitoring
+- [ ] Database query performance tracking
+- [ ] Alert system for processing failures
 - [ ] Audit logs for compliance
+- [ ] Consultation statistics (by status, submitter, etc.)
 
-### Phase 12: WordPress Plugin Refinement
-- [ ] Webhook signature verification on plugin
-- [ ] Automatic error handling & retries
-- [ ] User feedback on submission status
-- [ ] Multi-language support (FR/EN)
-- [ ] Mobile-responsive form
-- [ ] GDPR compliance features
+### Phase 10: Integration Enhancements
+- [ ] VetoPartner ERP direct integration (when ready)
+- [ ] Status webhooks back to verso-consultation-plugin
+- [ ] Automatic file cleanup (30-day retention)
+- [ ] Batch email processing optimization
+- [ ] Support for multiple IMAP mailboxes
 
-## Notes
+### Phase 11: Quality & Performance
+- [ ] Database query indexing optimization
+- [ ] IMAP connection pooling
+- [ ] Email attachment size limits
+- [ ] Automated backups
+- [ ] Performance benchmarking
+
+## Architecture Notes
+
+### Email-Based Processing
+```
+verso-vet.com (WordPress)
+  ↓ (form submission)
+Email to consultations@verso-vet.com (with JSON attachment)
+  ↓ (IMAP polling every 60s)
+consultation-requests /cron endpoint
+  ↓ (IMAP monitor)
+Parse JSON + store in SQLite
+  ↓ (REST API)
+GET /consultations (list/filter)
+GET /dashboard (web interface)
+```
 
 ### Production Endpoints
 ```
-Webhook: POST http://10.0.0.44:8092/consultations/submit
-API Base: http://10.0.0.44:8092
-Health: http://10.0.0.44:8092/health
-Docs: http://10.0.0.44:8092/docs
+Health: GET http://10.0.0.44:8092/health
+IMAP Monitor: GET http://10.0.0.44:8092/cron (triggered by scheduler)
+Cache Refresh: POST http://10.0.0.44:8092/refresh-db
+API Base: http://10.0.0.44:8092/consultations
+Dashboard: http://10.0.0.44:8092/dashboard
 ```
 
-### Secrets Configured
-- ✅ `consultation_webhook_secret` - HMAC for webhooks
-- ✅ `consultation_file_secret` - HMAC for file downloads
-
-### File Storage
-- **Local**: `/opt/onyx/data/consultation-requests/files/{uuid}/`
-- **Access**: `http://10.0.0.44:8092/files/{uuid}/{filename}?token=...`
-- **Retention**: 30 days
+### Secrets in Vault ✅
+- `imap_host` - IMAP server hostname
+- `imap_username` - IMAP login
+- `imap_password` - IMAP password
+- `verso_webhook_email` - Mailbox to monitor (fallback: consultations@verso-vet.com)
+- `consultation_file_secret` - HMAC secret for file downloads
 
 ### Database
 - **Type**: SQLite (async-safe with ThreadPoolExecutor)
-- **Location**: `/opt/onyx/data/consultation-requests/consultations.db`
-- **Tables**: consultations, status workflow tracking
-- **Backups**: Via system backup procedures
+- **Location**: `/opt/onyx/data/consultation-requests/data/consultations.db`
+- **Schema**: consultations table with uuid, status, data_json, etc.
+- **Connection**: Global cache with refresh endpoint
 
-### Statistics
-- **Total Consultations**: 10 (as of 2026-05-05)
-- **Status Distribution**:
-  - pending: 1
-  - received: 9
-  - integrated: 0
-  - rejected: 0
+### Monitoring
+- **IMAP Check**: Every 60 seconds via /cron endpoint
+- **Health Check**: GET /health returns service status
+- **Cron Tasks**: Defined in cron.json
 
 ---
 
-## Ready for Production ✅
+## Production Status ✅
 
-The skill is **fully operational and tested**. All core features implemented:
-- ✅ Secure webhook reception (HMAC-SHA256)
-- ✅ Database storage & retrieval
-- ✅ File handling (download, storage, secure access)
-- ✅ Email notifications
-- ✅ ERP integration orchestration
-- ✅ Monitoring (health checks, cron tasks)
-- ✅ Full API documentation
+The skill is **fully operational** with IMAP-based email monitoring:
+- ✅ Email monitoring (IMAP)
+- ✅ JSON attachment extraction
+- ✅ SQLite database storage & retrieval
+- ✅ REST API endpoints (list, filter, detail)
+- ✅ Web dashboard interface
+- ✅ Secure file downloads (HMAC tokens)
+- ✅ Cache management (/refresh-db)
+- ✅ Health monitoring
+- ✅ Forge validation (18/18 PASS)
 - ✅ Production deployment (v1.0.18)
 
-**No blockers. Ready to integrate with verso-vet.com WordPress site.**
+**Ready for production use with verso-consultation-plugin.**

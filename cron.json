@@ -1,0 +1,17 @@
+{
+  "tasks": [
+    {
+      "name": "imap-monitor",
+      "endpoint": "/cron",
+      "interval_sec": 60,
+      "description": "Monitor consultations@verso-vet.com for incoming consultation emails",
+      "enabled": true,
+      "timeout_sec": 30,
+      "retry": {
+        "enabled": true,
+        "max_attempts": 3,
+        "backoff_sec": 10
+      }
+    }
+  ]
+}
