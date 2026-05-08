@@ -118,6 +118,23 @@ async def cron() -> dict:
     return {"status": "cron_executed"}
 
 
+@app.post("/refresh-db")
+async def refresh_database() -> dict:
+    """Refresh the database connection cache.
+
+    Useful when the database file has been modified externally.
+    Forces the skill to reconnect to the database on next query.
+
+    Returns:
+        Status message
+    """
+    from src.core.database import reset_db
+
+    reset_db()
+    logger.info("Database connection refreshed")
+    return {"status": "success", "message": "Database connection reset and will reconnect on next query"}
+
+
 @app.get("/files/{uuid}/{filename}")
 async def download_file(
     uuid: str,

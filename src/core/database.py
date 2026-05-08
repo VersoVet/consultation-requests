@@ -29,6 +29,18 @@ def _get_sync_db() -> sqlite3.Connection:
     return _db_conn
 
 
+def reset_db() -> None:
+    """Reset the global database connection (useful after file changes)."""
+    global _db_conn
+    if _db_conn is not None:
+        try:
+            _db_conn.close()
+        except Exception as e:
+            logger.warning(f"Error closing database connection: {e}")
+    _db_conn = None
+    logger.info("Database connection reset")
+
+
 async def init_db() -> None:
     """Initialize SQLite database with schema."""
     loop = asyncio.get_event_loop()
