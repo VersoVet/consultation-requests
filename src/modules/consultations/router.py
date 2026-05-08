@@ -7,9 +7,11 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src.config import logger
 from src.core.database import (
+    delete_consultation,
     get_consultation,
     list_consultations,
 )
+from src.core.imap_monitor import delete_imap_email
 from src.modules.consultations.integration import (
     create_new_client_and_animal,
     integrate_with_erp,
@@ -58,6 +60,44 @@ async def list_consultations_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/search")
+async def search_animals(
+    q: Annotated[str, Query(description="Search query (animal/owner name)")] = "",
+) -> dict:
+    """Direct search in ERP.
+
+    Args:
+        q: Search query
+
+    Returns:
+        List of matching animals
+    """
+    try:
+        if not q:
+            return {"matches": []}
+
+        matches = await search_animals_in_erp(q)
+
+        return {
+            "query": q,
+            "count": len(matches),
+            "matches": [
+                {
+                    "erp_animal_id": m.erp_animal_id,
+                    "animal_name": m.animal_name,
+                    "race": m.race,
+                    "owner": m.owner_name,
+                    "species": m.species,
+                }
+                for m in matches
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Error in search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{consultation_id}")
 async def get_consultation_detail(consultation_id: int) -> dict:
     """Get consultation request details.
@@ -85,6 +125,48 @@ async def get_consultation_detail(consultation_id: int) -> dict:
         raise
     except Exception as e:
         logger.error(f"Error retrieving consultation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{consultation_id}")
+async def delete_consultation_endpoint(consultation_id: int) -> dict:
+    """Delete a consultation (mark as deleted and remove from IMAP).
+
+    Args:
+        consultation_id: ID of consultation to delete
+
+    Returns:
+        Status confirmation
+    """
+    try:
+        consultation = await get_consultation(consultation_id)
+        if not consultation:
+            raise HTTPException(status_code=404, detail="Consultation not found")
+
+        if consultation.get("status") == "deleted":
+            raise HTTPException(status_code=400, detail="Consultation already deleted")
+
+        # Mark as deleted in database
+        await delete_consultation(consultation_id)
+
+        # Delete from IMAP if UID is available
+        imap_uid = consultation.get("imap_uid")
+        if imap_uid:
+            success = await delete_imap_email(imap_uid)
+            if not success:
+                logger.warning(f"Failed to delete IMAP email {imap_uid}, but consultation marked deleted")
+
+        logger.info(f"Consultation {consultation_id} deleted successfully")
+        return {
+            "status": "deleted",
+            "id": consultation_id,
+            "message": "Consultation deleted and IMAP email removed",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting consultation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -231,42 +313,4 @@ async def integrate_consultation(
         raise
     except Exception as e:
         logger.error(f"Error integrating consultation: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/search")
-async def search_animals(
-    q: Annotated[str, Query(description="Search query (animal/owner name)")] = "",
-) -> dict:
-    """Direct search in ERP.
-
-    Args:
-        q: Search query
-
-    Returns:
-        List of matching animals
-    """
-    try:
-        if not q:
-            return {"matches": []}
-
-        matches = await search_animals_in_erp(q)
-
-        return {
-            "query": q,
-            "count": len(matches),
-            "matches": [
-                {
-                    "erp_animal_id": m.erp_animal_id,
-                    "animal_name": m.animal_name,
-                    "race": m.race,
-                    "owner": m.owner_name,
-                    "species": m.species,
-                }
-                for m in matches
-            ],
-        }
-
-    except Exception as e:
-        logger.error(f"Error in search: {e}")
         raise HTTPException(status_code=500, detail=str(e))

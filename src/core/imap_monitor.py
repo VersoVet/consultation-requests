@@ -7,6 +7,7 @@ import imapclient
 
 from src.config import logger
 from src.core.vault import get_secret
+from src.core.database import update_imap_uid
 
 
 async def get_imap_credentials() -> dict:
@@ -147,6 +148,11 @@ async def monitor_imap() -> list[str]:
                 if result:
                     processed_uuids.append(uuid)
                     logger.info(f"Stored consultation {uuid} from email")
+                    # Store IMAP UID for later deletion
+                    try:
+                        await update_imap_uid(uuid, uid)
+                    except Exception as e:
+                        logger.warning(f"Failed to store IMAP UID for {uuid}: {e}")
                 else:
                     logger.warning(f"Failed to store consultation {uuid}")
 
@@ -164,3 +170,38 @@ async def monitor_imap() -> list[str]:
     except Exception as e:
         logger.error(f"IMAP monitoring error: {e}")
         return []
+
+
+async def delete_imap_email(imap_uid: int) -> bool:
+    """Delete an email from IMAP by UID.
+
+    Args:
+        imap_uid: IMAP message UID to delete
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        credentials = await get_imap_credentials()
+        if not credentials:
+            logger.error("No IMAP credentials available for email deletion")
+            return False
+
+        imap = imapclient.IMAPClient(
+            credentials["host"],
+            port=993,
+            use_uid=True,
+            ssl=True,
+        )
+        imap.login(credentials["username"], credentials["password"])
+        imap.select_folder("INBOX")
+        imap.delete_messages([imap_uid])
+        imap.expunge()
+        imap.logout()
+
+        logger.info(f"IMAP email {imap_uid} deleted successfully")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error deleting IMAP email {imap_uid}: {e}")
+        return False

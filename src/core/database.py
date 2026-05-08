@@ -58,6 +58,7 @@ async def init_db() -> None:
                 submitter_type TEXT NOT NULL,
                 data_json TEXT NOT NULL,
                 files_local TEXT,
+                imap_uid INTEGER,
                 erp_client_id INTEGER,
                 erp_animal_id INTEGER,
                 erp_consult_id INTEGER,
@@ -67,6 +68,15 @@ async def init_db() -> None:
             """
         )
         conn.commit()
+
+        # Add imap_uid column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE consultations ADD COLUMN imap_uid INTEGER")
+            conn.commit()
+            logger.info("Added imap_uid column to consultations table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         logger.info(f"Database initialized: {DATABASE_PATH}")
 
     await loop.run_in_executor(_executor, _init)
@@ -180,6 +190,36 @@ async def update_consultation_status(
         cursor.execute(
             "UPDATE consultations SET status = ? WHERE id = ?",
             (status, consultation_id),
+        )
+        conn.commit()
+
+    await loop.run_in_executor(_executor, _update)
+
+
+async def delete_consultation(consultation_id: int) -> None:
+    """Mark consultation as deleted.
+
+    Args:
+        consultation_id: ID of consultation to delete
+    """
+    await update_consultation_status(consultation_id, "deleted")
+
+
+async def update_imap_uid(consultation_uuid: str, imap_uid: int) -> None:
+    """Store IMAP UID for later deletion.
+
+    Args:
+        consultation_uuid: UUID of consultation
+        imap_uid: IMAP message UID
+    """
+    loop = asyncio.get_event_loop()
+
+    def _update():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE consultations SET imap_uid = ? WHERE uuid = ?",
+            (imap_uid, consultation_uuid),
         )
         conn.commit()
 
