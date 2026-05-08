@@ -1,6 +1,6 @@
 {
   "name": "consultation-requests",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "core": {
     "display_name": "Consultation Requests",
     "description": "Centralized management of consultation requests from verso-vet.com - receive, store, and integrate with VetoPartner ERP",
