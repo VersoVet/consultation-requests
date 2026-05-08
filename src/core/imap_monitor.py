@@ -88,7 +88,8 @@ async def monitor_imap() -> list[str]:
 
         logger.info("Connected to IMAP")
 
-        # Search for unread consultation emails
+        # Search for consultation emails (both read and unread)
+        # Note: Check UNSEEN first, then ALL if needed for recovery
         search_criteria = [
             b"UNSEEN",
             b"SUBJECT",
@@ -96,6 +97,15 @@ async def monitor_imap() -> list[str]:
         ]
 
         uids = imap.search(search_criteria)
+
+        # If no unread emails, also check all emails (for recovery/reprocessing)
+        if not uids:
+            logger.info("No unread consultation emails, checking all emails...")
+            search_criteria = [
+                b"SUBJECT",
+                b"[Verso Vet] Demande",
+            ]
+            uids = imap.search(search_criteria)
         logger.info(f"Found {len(uids)} unread webhook emails")
 
         if not uids:
