@@ -9,7 +9,10 @@ from src.core.database import get_consultation, update_consultation_status
 
 
 def _format_consultation_text(data: dict) -> str:
-    """Format consultation data into clear, concise text for ERP synthese field.
+    """Format consultation data into concise text for ERP synthese field.
+
+    Only includes motif description, date, origin, and referring vet.
+    Patient/owner info already in dossier animal.
 
     Args:
         data: Consultation data dictionary
@@ -17,49 +20,36 @@ def _format_consultation_text(data: dict) -> str:
     Returns:
         Formatted text for ERP consultation
     """
+    from datetime import datetime
+
     lines = []
 
-    # Header with motif
+    # Motif/Description
     motif = data.get("motif", "Consultation")
-    lines.append("=== DEMANDE DE CONSULTATION ===")
-    lines.append(f"Motif: {motif}")
+    lines.append(f"Demande: {motif}")
     lines.append("")
 
-    # Animal info
-    lines.append("PATIENT:")
-    lines.append(f"  Nom: {data.get('animal_nom', 'N/A')}")
-    lines.append(f"  Espèce: {data.get('animal_espece', 'N/A')}")
-    if data.get("animal_race"):
-        lines.append(f"  Race: {data.get('animal_race')}")
+    # Date of request
+    submitted_at = data.get("submitted_at")
+    if submitted_at:
+        try:
+            dt = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
+            lines.append(f"Date demande: {dt.strftime('%d/%m/%Y à %H:%M')}")
+        except (ValueError, AttributeError):
+            lines.append(f"Date demande: {submitted_at}")
     lines.append("")
 
-    # Owner info
-    if data.get("owner_nom"):
-        lines.append("PROPRIÉTAIRE:")
-        owner_name = f"{data.get('owner_prenom', '')} {data.get('owner_nom')}".strip()
-        lines.append(f"  Nom: {owner_name}")
-        if data.get("owner_email"):
-            lines.append(f"  Email: {data.get('owner_email')}")
-        if data.get("owner_telephone"):
-            lines.append(f"  Téléphone: {data.get('owner_telephone')}")
-        lines.append("")
+    # Origin
+    lines.append("Origine: verso-vet.com (formulaire en ligne)")
+    lines.append("")
 
-    # Vet info
+    # Referring vet
     if data.get("vet_nom"):
-        lines.append("VÉTÉRINAIRE RÉFÉRENT:")
         vet_name = f"{data.get('vet_prenom', '')} {data.get('vet_nom')}".strip()
-        lines.append(f"  Nom: {vet_name}")
+        lines.append("Vétérinaire référent:")
+        lines.append(f"  {vet_name}")
         if data.get("vet_clinique"):
             lines.append(f"  Clinique: {data.get('vet_clinique')}")
-        if data.get("vet_email"):
-            lines.append(f"  Email: {data.get('vet_email')}")
-        if data.get("vet_telephone"):
-            lines.append(f"  Téléphone: {data.get('vet_telephone')}")
-        lines.append("")
-
-    # Additional info
-    if data.get("motif"):
-        lines.append(f"Description: {motif}")
 
     return "\n".join(lines)
 
@@ -114,7 +104,7 @@ async def integrate_with_erp(
                 json={
                     "animal_id": erp_animal_id,
                     "synthese": synthese,
-                    "motif": data.get("motif", "Consultation"),
+                    "motif": "Demande de consultation",
                 },
                 timeout=30.0,
             )
