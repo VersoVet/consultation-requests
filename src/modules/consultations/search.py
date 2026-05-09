@@ -11,12 +11,12 @@ from src.config import logger
 class AnimalMatch:
     """Animal match from ERP search."""
 
-    erp_animal_id: int
+    erp_animal_id: int | None
     animal_name: str
     species: str
     race: str | None
     owner_name: str
-    owner_id: int
+    owner_id: int | None
     last_visit: str | None
     age: int | None
     weight: float | None
@@ -56,13 +56,19 @@ async def search_animals_in_erp(
             owner_last = item.get("nom_proprietaire", "").strip()
             owner_name = f"{owner_first} {owner_last}".strip()
 
+            # Convert string IDs from ERP to integers
+            animal_id_str = item.get("id_animal")
+            owner_id_str = item.get("id_proprietaire")
+            animal_id = int(animal_id_str) if animal_id_str else None
+            owner_id = int(owner_id_str) if owner_id_str else None
+
             match = AnimalMatch(
-                erp_animal_id=item.get("id_animal"),
+                erp_animal_id=animal_id,
                 animal_name=item.get("nom_animal"),
                 species=item.get("espece"),
                 race=item.get("race"),
                 owner_name=owner_name,
-                owner_id=item.get("id_proprietaire"),
+                owner_id=owner_id,
                 last_visit=item.get("last_visit"),
                 age=item.get("age"),
                 weight=item.get("poids"),
