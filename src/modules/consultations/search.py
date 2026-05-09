@@ -50,14 +50,19 @@ async def search_animals_in_erp(
         results = response.json()
         matches = []
 
-        for item in results.get("results", []):
+        for item in results.get("matches", []):
+            # Build owner name from nom_proprietaire + prenom_proprietaire
+            owner_first = item.get("prenom_proprietaire", "").strip()
+            owner_last = item.get("nom_proprietaire", "").strip()
+            owner_name = f"{owner_first} {owner_last}".strip()
+
             match = AnimalMatch(
-                erp_animal_id=item.get("idanimal"),
+                erp_animal_id=item.get("id_animal"),
                 animal_name=item.get("nom_animal"),
                 species=item.get("espece"),
                 race=item.get("race"),
-                owner_name=item.get("nom_client"),
-                owner_id=item.get("idclient"),
+                owner_name=owner_name,
+                owner_id=item.get("id_proprietaire"),
                 last_visit=item.get("last_visit"),
                 age=item.get("age"),
                 weight=item.get("poids"),

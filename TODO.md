@@ -1,17 +1,18 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.20 | Last Updated: 2026-05-09
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.25 | Last Updated: 2026-05-09
 
 ## Current Status
-✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Core system fully functional with deletion and ERP integration starting.
+✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Full delete + ERP integration UI now live.
 
-**Latest (2026-05-09)**:
+**Latest (2026-05-09 - v1.0.25)**:
 - ✅ DELETE endpoint implemented - mark consultation deleted + remove from IMAP
 - ✅ IMAP UID tracking added (imap_uid column in DB)
 - ✅ Route ordering fixed (GET /search before /{id})
-- 🔄 Dashboard UI updates in progress - delete button + integrate modal
+- ✅ Dashboard delete button (red, with confirmation)
+- ✅ Dashboard integrate modal (search ERP + patient selection)
 - 🔄 ERP search.py mapping corrections needed
-- Forge validation passing (0 errors)
+- Forge validation passing (0 errors, 1 info warning)
 
 ## Completed ✅
 
@@ -113,9 +114,9 @@
 - [x] Backend DELETE endpoint (mark deleted + IMAP removal)
 - [x] IMAP UID tracking (imap_uid column)
 - [x] Route ordering fix
+- [x] Fix search.py ERP field mapping (id_animal, id_proprietaire, nom_proprietaire)
 - [ ] Dashboard delete button (red, with confirmation)
 - [ ] Dashboard integrate modal (search ERP + patient selection)
-- [ ] Fix search.py ERP field mapping
 - [ ] End-to-end test with real consultations
 
 ## Future Enhancements (Optional)
