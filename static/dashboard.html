@@ -181,6 +181,19 @@
                         No patients found
                     </div>
 
+                    <!-- Selected Patient Display -->
+                    <div id="erp-selected-patient" class="alert alert-success" style="display: none;">
+                        <h6 class="alert-heading">✅ Selected Patient</h6>
+                        <p class="mb-2"><strong id="selected-animal-name"></strong> (<span id="selected-species"></span>)</p>
+                        <small class="text-muted">
+                            Owner: <span id="selected-owner-name"></span><br>
+                            ERP ID: <code id="selected-erp-id"></code>
+                        </small>
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="resetErpSelection()">Change Selection</button>
+                        </div>
+                    </div>
+
                     <hr>
 
                     <div class="form-check">
@@ -209,6 +222,7 @@
         let currentDetail = null;
         let autoRefreshInterval;
         let selectedErpAnimal = null;
+        let selectedErpPatient = null;  // Store full patient data
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -492,10 +506,12 @@
 
             // Reset ERP search modal
             selectedErpAnimal = null;
+            selectedErpPatient = null;
             document.getElementById('erp-search-input').value = '';
             document.getElementById('create-new-check').checked = false;
             document.getElementById('erp-search-results').style.display = 'none';
             document.getElementById('erp-no-results').style.display = 'none';
+            document.getElementById('erp-selected-patient').style.display = 'none';
             document.getElementById('erp-integrate-btn').style.display = 'none';
 
             DETAIL_MODAL.show();
@@ -564,6 +580,9 @@
                 const noResultsDiv = document.getElementById('erp-no-results');
 
                 if (data.count > 0) {
+                    // Store matches globally for selection
+                    window.erpMatches = data.matches;
+
                     resultsList.innerHTML = data.matches.map((match, idx) => `
                         <div class="list-group-item">
                             <div class="d-flex w-100 justify-content-between align-items-center">
@@ -572,7 +591,7 @@
                                     <p class="mb-1 text-muted small">${match.race} • Owner: ${match.owner}</p>
                                     <small class="text-secondary">ERP ID: ${match.erp_animal_id}</small>
                                 </div>
-                                <button class="btn btn-sm btn-outline-primary" onclick="selectErpAnimal(${idx}, ${match.erp_animal_id})">
+                                <button class="btn btn-sm btn-outline-primary" onclick="selectErpAnimal(${idx})">
                                     Select
                                 </button>
                             </div>
@@ -591,10 +610,34 @@
             }
         }
 
-        function selectErpAnimal(idx, erp_animal_id) {
-            selectedErpAnimal = erp_animal_id;
+        function selectErpAnimal(idx) {
+            const match = window.erpMatches[idx];
+            selectedErpAnimal = match.erp_animal_id;
+            selectedErpPatient = match;
+
+            // Hide search results and show selected patient
+            document.getElementById('erp-search-results').style.display = 'none';
+            document.getElementById('erp-no-results').style.display = 'none';
+
+            // Display selected patient
+            const selectedDiv = document.getElementById('erp-selected-patient');
+            document.getElementById('selected-animal-name').textContent = match.animal_name;
+            document.getElementById('selected-species').textContent = match.species;
+            document.getElementById('selected-owner-name').textContent = match.owner;
+            document.getElementById('selected-erp-id').textContent = match.erp_animal_id;
+            selectedDiv.style.display = 'block';
+
+            // Uncheck "create new" and show integrate button
             document.getElementById('create-new-check').checked = false;
             document.getElementById('erp-integrate-btn').style.display = 'block';
+        }
+
+        function resetErpSelection() {
+            selectedErpAnimal = null;
+            selectedErpPatient = null;
+            document.getElementById('erp-selected-patient').style.display = 'none';
+            document.getElementById('erp-search-results').style.display = 'block';
+            document.getElementById('erp-search-input').focus();
         }
 
         async function integrateConsultation() {
@@ -669,6 +712,7 @@
         window.showIntegrateModal = showIntegrateModal;
         window.deleteConsultation = deleteConsultation;
         window.selectErpAnimal = selectErpAnimal;
+        window.resetErpSelection = resetErpSelection;
     </script>
 </body>
 </html>
