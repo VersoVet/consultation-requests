@@ -45,11 +45,12 @@
                     <div class="mb-3">
                         <label class="form-label">Status</label>
                         <select class="form-select form-select-sm" id="status-filter">
-                            <option value="">All Status</option>
+                            <option value="">All Status (excluding deleted)</option>
                             <option value="pending">Pending</option>
                             <option value="received">Received</option>
                             <option value="integrated">Integrated</option>
                             <option value="rejected">Rejected</option>
+                            <option value="deleted">Deleted Only</option>
                         </select>
                     </div>
 
@@ -263,10 +264,15 @@
             const search = document.getElementById('search-input').value.toLowerCase();
 
             let filtered = allConsultations.filter(c => {
+                // Always hide deleted unless explicitly selected
+                if (c.status === 'deleted' && status !== 'deleted') {
+                    return false;
+                }
                 const matchStatus = !status || c.status === status;
                 const matchSearch = !search ||
-                    (c.data?.animal?.nom || '').toLowerCase().includes(search) ||
-                    (c.data?.owner?.nom || '').toLowerCase().includes(search);
+                    (c.data?.animal_nom || '').toLowerCase().includes(search) ||
+                    (c.data?.owner_nom || '').toLowerCase().includes(search) ||
+                    (c.data?.vet_nom || '').toLowerCase().includes(search);
                 return matchStatus && matchSearch;
             });
 
