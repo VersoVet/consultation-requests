@@ -29,17 +29,17 @@ async def search_animals_in_erp(
     """Search animals in ERP by name or owner.
 
     Args:
-        search_query: Animal name or owner name
+        search_query: Animal name or owner name (searches both animal AND owner)
         erp_url: ERP connector URL
 
     Returns:
-        List of matching animals from ERP
+        List of matching animals from ERP (including owner name results)
     """
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{erp_url}/search",
-                params={"q": search_query},
+                params={"q": search_query, "limit": 100},
                 timeout=10.0,
             )
 
@@ -76,7 +76,7 @@ async def search_animals_in_erp(
             matches.append(match)
 
         logger.info(f"ERP search for '{search_query}': {len(matches)} matches")
-        return matches[:5]  # Limit to top 5
+        return matches  # Return all results from ERP (up to limit=100)
 
     except Exception as e:
         logger.error(f"Error searching ERP: {e}")
