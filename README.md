@@ -11,8 +11,10 @@ Centralizes consultation request processing from multiple sources (WordPress for
 - **IMAP Monitoring**: Listens for consultation emails from `consultations@verso-vet.com`
 - **Data Extraction**: Extracts JSON attachments from emails into structured database
 - **REST API**: Endpoints for querying, filtering, and managing consultations
-- **Web Dashboard**: Visual interface for tracking consultation status
-- **Database Persistence**: SQLite for reliable local storage
+- **Web Dashboard**: Visual interface for tracking consultation status with search and filtering
+- **Delete Consultations**: Mark consultations as deleted and remove from IMAP
+- **ERP Integration**: Search patients in erp-connector before integrating consultations
+- **Database Persistence**: SQLite for reliable local storage with IMAP UID tracking
 - **Connection Refresh**: `/refresh-db` endpoint for cache invalidation
 
 ## Architecture
@@ -176,6 +178,7 @@ CREATE TABLE consultations (
     submitter_type TEXT NOT NULL,
     data_json TEXT NOT NULL,
     files_local TEXT,
+    imap_uid INTEGER,
     erp_client_id INTEGER,
     erp_animal_id INTEGER,
     erp_consult_id INTEGER,
@@ -184,7 +187,9 @@ CREATE TABLE consultations (
 )
 ```
 
-**Statuses**: `pending`, `reviewed`, `integrated`, `archived`
+**Statuses**: `pending`, `received`, `integrated`, `rejected`, `deleted`
+
+**Note**: `imap_uid` stores the IMAP message UID for tracking and deletion of original emails.
 
 ## Testing
 

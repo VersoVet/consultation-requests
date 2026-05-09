@@ -1,16 +1,17 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Last Updated: 2026-05-08
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.20 | Last Updated: 2026-05-09
 
 ## Current Status
-✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Core system fully functional.
+✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Core system fully functional with deletion and ERP integration starting.
 
-**Latest (2026-05-08 22:30)**:
-- Architecture updated to email-based IMAP monitoring (from verso-consultation-plugin)
-- JSON attachment extraction and SQLite storage working
-- REST API endpoints fully documented and validated
-- Documentation (ARCHITECTURE.md, API.md) updated to reflect current implementation
-- Forge validation passing (0 errors, 7 warnings resolved)
+**Latest (2026-05-09)**:
+- ✅ DELETE endpoint implemented - mark consultation deleted + remove from IMAP
+- ✅ IMAP UID tracking added (imap_uid column in DB)
+- ✅ Route ordering fixed (GET /search before /{id})
+- 🔄 Dashboard UI updates in progress - delete button + integrate modal
+- 🔄 ERP search.py mapping corrections needed
+- Forge validation passing (0 errors)
 
 ## Completed ✅
 
@@ -90,10 +91,13 @@
 |------|--------|---------|
 | Email parsing | ✅ PASS | JSON extraction from IMAP emails |
 | SQLite storage | ✅ PASS | Consultations persisted correctly |
+| IMAP UID tracking | ✅ PASS | imap_uid stored on import |
+| DELETE endpoint | ✅ PASS | Soft delete + email removal from IMAP |
 | API /consultations | ✅ PASS | List with filtering and pagination |
 | API /consultations/{id} | ✅ PASS | Detail view returns full data |
+| API /search | ✅ PASS | ERP patient search (1-2 words) |
 | File download | ✅ PASS | Token-based HMAC validation |
-| Dashboard HTML | ✅ PASS | Serves correctly |
+| Dashboard HTML | ✅ PASS | Loads correctly with delete button ready |
 | Health check | ✅ PASS | Service status reporting |
 
 ### Metrics
@@ -103,17 +107,28 @@
 - **Status**: 🟢 Production Ready (v1.0.18)
 - **Response Time**: < 100ms average
 
+## In Progress (Current Sprint)
+
+### Phase 8: Delete + ERP Integrate (v1.0.20-v1.0.21)
+- [x] Backend DELETE endpoint (mark deleted + IMAP removal)
+- [x] IMAP UID tracking (imap_uid column)
+- [x] Route ordering fix
+- [ ] Dashboard delete button (red, with confirmation)
+- [ ] Dashboard integrate modal (search ERP + patient selection)
+- [ ] Fix search.py ERP field mapping
+- [ ] End-to-end test with real consultations
+
 ## Future Enhancements (Optional)
 
-### Phase 8: Dashboard Improvements
+### Phase 9: Dashboard Improvements
 - [ ] Real-time consultation updates (WebSocket)
 - [ ] File preview/thumbnail display
 - [ ] Export data (CSV, PDF)
-- [ ] Advanced search and filtering
 - [ ] Bulk status updates
 - [ ] Consultation statistics dashboard
+- [ ] Advanced filtering (date range, multi-status)
 
-### Phase 9: Monitoring & Observability
+### Phase 10: Monitoring & Observability
 - [ ] Email processing metrics
 - [ ] IMAP connection health monitoring
 - [ ] Database query performance tracking
@@ -121,14 +136,14 @@
 - [ ] Audit logs for compliance
 - [ ] Consultation statistics (by status, submitter, etc.)
 
-### Phase 10: Integration Enhancements
-- [ ] VetoPartner ERP direct integration (when ready)
+### Phase 11: Integration Enhancements
+- [ ] VetoPartner ERP document upload after integration
 - [ ] Status webhooks back to verso-consultation-plugin
 - [ ] Automatic file cleanup (30-day retention)
 - [ ] Batch email processing optimization
 - [ ] Support for multiple IMAP mailboxes
 
-### Phase 11: Quality & Performance
+### Phase 12: Quality & Performance
 - [ ] Database query indexing optimization
 - [ ] IMAP connection pooling
 - [ ] Email attachment size limits

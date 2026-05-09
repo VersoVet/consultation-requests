@@ -1,6 +1,6 @@
 # Consultation Requests - API Reference
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.18 | Architecture: IMAP-based
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.20 | Architecture: IMAP-based + ERP Integration
 
 ## Overview
 
@@ -47,9 +47,10 @@ List all consultation requests with optional filtering.
 
 - `status` (optional): Filter by status
   - `pending` - Newly received from email
-  - `reviewed` - User has reviewed
-  - `integrated` - Integrated into external system
-  - `archived` - Closed/archived
+  - `received` - Received and processed from IMAP
+  - `integrated` - Integrated into ERP system
+  - `rejected` - Rejected/invalid
+  - `deleted` - Marked as deleted (soft delete)
 - `limit` (optional, default 100, max 500): Number of results
 - `offset` (optional, default 0): Pagination offset
 
@@ -159,6 +160,98 @@ curl http://10.0.0.44:8092/cron
   "status": "cron_executed"
 }
 ```
+
+### DELETE /consultations/{id}
+
+Delete a consultation (mark as deleted in database and remove from IMAP).
+
+**Example**:
+
+```bash
+curl -X DELETE http://10.0.0.44:8092/consultations/1
+```
+
+**Response**:
+
+```json
+{
+  "status": "deleted",
+  "id": 1,
+  "message": "Consultation deleted and IMAP email removed"
+}
+```
+
+**Note**: Soft delete - consultation remains in database with `status='deleted'` but is hidden from dashboard.
+
+---
+
+### GET /consultations/search?q=
+
+Search ERP for matching patients (via erp-connector).
+
+**Query parameters**:
+
+- `q` (required): Search query
+  - 1 word: searches animal name OR owner name
+  - 2 words: searches for animal + owner combination (e.g., `?q=luna+martin`)
+
+**Example**:
+
+```bash
+curl "http://10.0.0.44:8092/search?q=luna+martin"
+```
+
+**Response**:
+
+```json
+{
+  "query": "luna martin",
+  "count": 2,
+  "matches": [
+    {
+      "erp_animal_id": "14698",
+      "animal_name": "LUNA",
+      "race": "Border Collie",
+      "owner": "MARTIN Carole",
+      "species": "Chien"
+    }
+  ]
+}
+```
+
+---
+
+### POST /consultations/{id}/integrate
+
+Integrate a consultation into ERP (VetoPartner).
+
+**Query parameters**:
+
+- `erp_animal_id` (optional): ID of existing animal in ERP
+- `create_new_client` (optional): If `true`, create new client + animal
+
+**Example**:
+
+```bash
+# Match with existing animal
+curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?erp_animal_id=14698"
+
+# Create new client + animal
+curl -X POST "http://10.0.0.44:8092/consultations/1/integrate?create_new_client=true"
+```
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "id": 1,
+  "erp_consult_id": "12345",
+  "message": "Integrated into VetoPartner"
+}
+```
+
+---
 
 ### POST /refresh-db
 
