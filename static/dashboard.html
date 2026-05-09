@@ -556,7 +556,7 @@
             }
 
             try {
-                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
 
                 const resultsList = document.getElementById('erp-results-list');
