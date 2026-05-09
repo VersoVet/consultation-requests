@@ -1,32 +1,88 @@
 """ERP integration for consultations."""
 
-from datetime import UTC, datetime
+import json
 
 import httpx
 
 from src.config import logger
-from src.core.database import update_consultation_status
+from src.core.database import get_consultation, update_consultation_status
+
+
+def _format_consultation_text(data: dict) -> str:
+    """Format consultation data into clear, concise text for ERP synthese field.
+
+    Args:
+        data: Consultation data dictionary
+
+    Returns:
+        Formatted text for ERP consultation
+    """
+    lines = []
+
+    # Header with motif
+    motif = data.get("motif", "Consultation")
+    lines.append("=== DEMANDE DE CONSULTATION ===")
+    lines.append(f"Motif: {motif}")
+    lines.append("")
+
+    # Animal info
+    lines.append("PATIENT:")
+    lines.append(f"  Nom: {data.get('animal_nom', 'N/A')}")
+    lines.append(f"  Espèce: {data.get('animal_espece', 'N/A')}")
+    if data.get("animal_race"):
+        lines.append(f"  Race: {data.get('animal_race')}")
+    lines.append("")
+
+    # Owner info
+    if data.get("owner_nom"):
+        lines.append("PROPRIÉTAIRE:")
+        owner_name = f"{data.get('owner_prenom', '')} {data.get('owner_nom')}".strip()
+        lines.append(f"  Nom: {owner_name}")
+        if data.get("owner_email"):
+            lines.append(f"  Email: {data.get('owner_email')}")
+        if data.get("owner_telephone"):
+            lines.append(f"  Téléphone: {data.get('owner_telephone')}")
+        lines.append("")
+
+    # Vet info
+    if data.get("vet_nom"):
+        lines.append("VÉTÉRINAIRE RÉFÉRENT:")
+        vet_name = f"{data.get('vet_prenom', '')} {data.get('vet_nom')}".strip()
+        lines.append(f"  Nom: {vet_name}")
+        if data.get("vet_clinique"):
+            lines.append(f"  Clinique: {data.get('vet_clinique')}")
+        if data.get("vet_email"):
+            lines.append(f"  Email: {data.get('vet_email')}")
+        if data.get("vet_telephone"):
+            lines.append(f"  Téléphone: {data.get('vet_telephone')}")
+        lines.append("")
+
+    # Additional info
+    if data.get("motif"):
+        lines.append(f"Description: {motif}")
+
+    return "\n".join(lines)
 
 
 async def integrate_with_erp(
     consultation_id: int,
     erp_animal_id: int,
-    motif: str,
-    specialite: str,
-    urgence: bool,
-    attachments: list[str],
+    motif: str = None,
+    specialite: str = None,
+    urgence: bool = False,
+    attachments: list[str] = None,
     erp_url: str = "http://10.0.0.44:8101",
 ) -> dict:
     """Integrate consultation into ERP.
 
-    Creates consultation in ERP and uploads documents.
+    Creates consultation in ERP with formatted text summary.
 
     Args:
         consultation_id: Consultation ID in local DB
         erp_animal_id: Animal ID in ERP
-        motif: Consultation motif
-        specialite: Speciality
-        urgence: Is urgent
+        motif: Consultation motif (optional, from data)
+        specialite: Speciality (unused, kept for compatibility)
+        urgence: Is urgent (unused, kept for compatibility)
         attachments: List of local file paths
         erp_url: ERP connector URL
 
@@ -36,58 +92,74 @@ async def integrate_with_erp(
     try:
         logger.info(f"Integrating consultation {consultation_id} into ERP...")
 
-        # Create consultation in ERP
+        # Get full consultation data
+        consultation = await get_consultation(consultation_id)
+        if not consultation:
+            return {"success": False, "error": "Consultation not found"}
+
+        # Parse consultation data
+        try:
+            data = json.loads(consultation.get("data_json", "{}"))
+        except (json.JSONDecodeError, ValueError):
+            data = {}
+
+        # Format comprehensive summary text
+        synthese = _format_consultation_text(data)
+        logger.info(f"Formatted synthese text ({len(synthese)} chars)")
+
+        # Create consultation in ERP with correct field names
         async with httpx.AsyncClient() as client:
             consult_response = await client.post(
                 f"{erp_url}/consultations",
                 json={
-                    "idanimal": erp_animal_id,
-                    "synthese": motif,
-                    "specialite": specialite,
-                    "urgent": urgence,
-                    "date_consult": datetime.now(UTC).isoformat(),
+                    "animal_id": erp_animal_id,
+                    "synthese": synthese,
+                    "motif": data.get("motif", "Consultation"),
                 },
                 timeout=30.0,
             )
 
-        if consult_response.status_code != 201:
-            logger.error(f"Failed to create consultation in ERP: {consult_response.status_code}")
-            return {"success": False, "error": "ERP creation failed"}
+            if consult_response.status_code != 201:
+                logger.error(
+                    f"Failed to create consultation in ERP: {consult_response.status_code} - {consult_response.text}"
+                )
+                return {"success": False, "error": "ERP creation failed"}
 
-        consult_data = consult_response.json()
-        erp_consult_id = consult_data.get("idconsult")
+            consult_data = consult_response.json()
+            erp_consult_id = consult_data.get("id")  # ERP returns "id", not "idconsult"
 
-        logger.info(f"Created consultation {erp_consult_id} in ERP")
+            logger.info(f"Created consultation {erp_consult_id} in ERP")
 
-        # Upload documents
-        if attachments:
-            logger.info(f"Uploading {len(attachments)} documents...")
-            for attachment in attachments:
-                try:
-                    # Upload document to ERP
-                    with open(attachment, "rb") as f:
-                        files = {"file": f}
-                        doc_response = await client.post(
-                            f"{erp_url}/animals/{erp_animal_id}/documents/upload",
-                            files=files,
-                            timeout=30.0,
-                        )
+            # Upload documents
+            if attachments:
+                logger.info(f"Uploading {len(attachments)} documents...")
+                for attachment in attachments:
+                    try:
+                        # Upload document to ERP
+                        with open(attachment, "rb") as f:
+                            files = {"file": f}
+                            doc_response = await client.post(
+                                f"{erp_url}/animals/{erp_animal_id}/documents/upload",
+                                files=files,
+                                timeout=30.0,
+                            )
 
-                    if doc_response.status_code == 201:
-                        logger.info(f"Uploaded: {attachment.split('/')[-1]}")
-                    else:
-                        logger.warning(f"Failed to upload {attachment}: {doc_response.status_code}")
+                        if doc_response.status_code == 201:
+                            logger.info(f"Uploaded: {attachment.split('/')[-1]}")
+                        else:
+                            logger.warning(f"Failed to upload {attachment}: {doc_response.status_code}")
 
-                except Exception as e:
-                    logger.error(f"Error uploading {attachment}: {e}")
+                    except Exception as e:
+                        logger.error(f"Error uploading {attachment}: {e}")
 
         # Update local DB
         await update_consultation_status(consultation_id, "integrated")
 
+        doc_count = len(attachments) if attachments else 0
         return {
             "success": True,
             "erp_consult_id": erp_consult_id,
-            "documents_uploaded": len(attachments),
+            "documents_uploaded": doc_count,
         }
 
     except Exception as e:
