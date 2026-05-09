@@ -110,14 +110,34 @@
 
 ## In Progress (Current Sprint)
 
-### Phase 8: Delete + ERP Integrate (v1.0.20-v1.0.21)
+### Phase 8: Delete + ERP Integrate (v1.0.25) ✅ COMPLETE
 - [x] Backend DELETE endpoint (mark deleted + IMAP removal)
 - [x] IMAP UID tracking (imap_uid column)
 - [x] Route ordering fix
 - [x] Fix search.py ERP field mapping (id_animal, id_proprietaire, nom_proprietaire)
-- [ ] Dashboard delete button (red, with confirmation)
-- [ ] Dashboard integrate modal (search ERP + patient selection)
-- [ ] End-to-end test with real consultations
+- [x] Dashboard delete button (red, with confirmation)
+- [x] Dashboard integrate modal (search ERP + patient selection)
+- [ ] End-to-end test with real consultations (optional)
+
+---
+
+## Phase 8 Summary (2026-05-09)
+
+**Dashboard UI Complete** ✅
+
+**New Features in v1.0.25:**
+- Delete consultation: Red button with confirmation dialog in table + modal
+- ERP Integration modal: Search patients via `GET /search?q=`, select existing or create new
+- Soft delete: Mark as deleted in DB, hidden from dashboard
+- End-to-end flow: Email → SQLite → Delete/Integrate UI
+
+**Endpoints Used:**
+- `DELETE /consultations/{id}` - soft delete + IMAP removal
+- `GET /search?q=` - search ERP for patients
+- `POST /consultations/{id}/integrate?erp_animal_id=X` - integrate with existing patient
+- `POST /consultations/{id}/integrate?create_new_client=true` - create new client
+
+---
 
 ## Future Enhancements (Optional)
 
