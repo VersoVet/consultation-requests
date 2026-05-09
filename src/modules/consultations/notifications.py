@@ -100,13 +100,31 @@ Accédez au dashboard: http://10.0.0.44:8092/dashboard
 
         <div class="section">
             {"<h3>🩺 Référant Vétérinaire</h3>" if request.submitter_type == "vet" else "<h3>👤 Propriétaire</h3>"}
-            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.vet.nom} {request.vet.prenom}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Clinique:</span> {request.vet.clinique}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.vet.email}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.vet.telephone}</div>" if request.vet else ""}
-            {f"<div class=\"field\"><span class=\"label\">Nom:</span> {request.owner.nom} {request.owner.prenom}</div>" if request.owner else ""}
-            {f"<div class=\"field\"><span class=\"label\">Email:</span> {request.owner.email or 'N/A'}</div>" if request.owner else ""}
-            {f"<div class=\"field\"><span class=\"label\">Tél:</span> {request.owner.telephone or 'N/A'}</div>" if request.owner else ""}
+            {
+        f'<div class="field"><span class="label">Nom:</span> {request.vet.nom} {request.vet.prenom}</div>'
+        if request.vet
+        else ""
+    }
+            {
+        f'<div class="field"><span class="label">Clinique:</span> {request.vet.clinique}</div>' if request.vet else ""
+    }
+            {f'<div class="field"><span class="label">Email:</span> {request.vet.email}</div>' if request.vet else ""}
+            {f'<div class="field"><span class="label">Tél:</span> {request.vet.telephone}</div>' if request.vet else ""}
+            {
+        f'<div class="field"><span class="label">Nom:</span> {request.owner.nom} {request.owner.prenom}</div>'
+        if request.owner
+        else ""
+    }
+            {
+        f'<div class="field"><span class="label">Email:</span> {request.owner.email or "N/A"}</div>'
+        if request.owner
+        else ""
+    }
+            {
+        f'<div class="field"><span class="label">Tél:</span> {request.owner.telephone or "N/A"}</div>'
+        if request.owner
+        else ""
+    }
         </div>
 
         <div class="section">

@@ -142,8 +142,57 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-danger" id="delete-btn" style="display: none;">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
                     <button type="button" class="btn btn-primary" id="integrate-btn" style="display: none;">
                         <i class="bi bi-arrow-repeat"></i> Integrate in ERP
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ERP Search Modal -->
+    <div class="modal fade" id="erpSearchModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Search ERP Patient</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Search by animal and owner name</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="erp-search-input" placeholder="e.g., Luna Martin">
+                            <button class="btn btn-primary" type="button" id="erp-search-btn">Search</button>
+                        </div>
+                        <small class="text-muted">Tip: Enter 1 word for animal name OR owner name, 2+ words for combined search</small>
+                    </div>
+
+                    <div id="erp-search-results" style="display: none;">
+                        <h6>Search Results</h6>
+                        <div id="erp-results-list" class="list-group"></div>
+                    </div>
+
+                    <div id="erp-no-results" class="alert alert-info" style="display: none;">
+                        No patients found
+                    </div>
+
+                    <hr>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="create-new-check">
+                        <label class="form-check-label" for="create-new-check">
+                            Create new client + animal
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="erp-integrate-btn" style="display: none;">
+                        <i class="bi bi-check"></i> Integrate
                     </button>
                 </div>
             </div>
@@ -154,9 +203,11 @@
     <script>
         const API_BASE = '/consultations';
         const DETAIL_MODAL = new bootstrap.Modal(document.getElementById('detailModal'));
+        const ERP_SEARCH_MODAL = new bootstrap.Modal(document.getElementById('erpSearchModal'));
         let allConsultations = [];
         let currentDetail = null;
         let autoRefreshInterval;
+        let selectedErpAnimal = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -173,7 +224,13 @@
             document.getElementById('reset-filters').addEventListener('click', resetFilters);
             document.getElementById('status-filter').addEventListener('change', filterConsultations);
             document.getElementById('search-input').addEventListener('keyup', filterConsultations);
-            document.getElementById('integrate-btn').addEventListener('click', integrateConsultation);
+            document.getElementById('integrate-btn').addEventListener('click', openErpSearchModal);
+            document.getElementById('delete-btn').addEventListener('click', deleteCurrentConsultation);
+            document.getElementById('erp-search-btn').addEventListener('click', searchERP);
+            document.getElementById('erp-integrate-btn').addEventListener('click', integrateConsultation);
+            document.getElementById('erp-search-input').addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') searchERP();
+            });
         }
 
         async function loadConsultations() {
@@ -258,6 +315,11 @@
                             ${['pending', 'received'].includes(c.status) ? `
                                 <button class="btn btn-sm btn-success" onclick="showIntegrateModal(${c.id})">
                                     <i class="bi bi-arrow-repeat"></i> Integrate
+                                </button>
+                            ` : ''}
+                            ${c.status !== 'deleted' ? `
+                                <button class="btn btn-sm btn-danger" onclick="deleteConsultation(${c.id})">
+                                    <i class="bi bi-trash"></i> Delete
                                 </button>
                             ` : ''}
                         </td>
@@ -406,13 +468,29 @@
                 ${filesHtml}
             `;
 
-            // Show/hide integrate button
+            // Show/hide integrate and delete buttons
             const integrateBtn = document.getElementById('integrate-btn');
+            const deleteBtn = document.getElementById('delete-btn');
+
             if (['pending', 'received'].includes(consultation.status)) {
                 integrateBtn.style.display = 'block';
             } else {
                 integrateBtn.style.display = 'none';
             }
+
+            if (consultation.status !== 'deleted') {
+                deleteBtn.style.display = 'block';
+            } else {
+                deleteBtn.style.display = 'none';
+            }
+
+            // Reset ERP search modal
+            selectedErpAnimal = null;
+            document.getElementById('erp-search-input').value = '';
+            document.getElementById('create-new-check').checked = false;
+            document.getElementById('erp-search-results').style.display = 'none';
+            document.getElementById('erp-no-results').style.display = 'none';
+            document.getElementById('erp-integrate-btn').style.display = 'none';
 
             DETAIL_MODAL.show();
         }
@@ -421,21 +499,128 @@
             showDetail(id);
         }
 
+        async function deleteConsultation(id) {
+            if (!confirm('Delete this consultation? This action cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    alert('Consultation deleted');
+                    loadConsultations();
+                } else {
+                    alert('Failed to delete consultation');
+                }
+            } catch (error) {
+                console.error('Error deleting:', error);
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function deleteCurrentConsultation() {
+            if (!currentDetail) return;
+            if (!confirm('Delete this consultation? This action cannot be undone.')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/${currentDetail.id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    alert('Consultation deleted');
+                    DETAIL_MODAL.hide();
+                    loadConsultations();
+                } else {
+                    alert('Failed to delete consultation');
+                }
+            } catch (error) {
+                console.error('Error deleting:', error);
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function openErpSearchModal() {
+            if (!currentDetail) return;
+            DETAIL_MODAL.hide();
+            ERP_SEARCH_MODAL.show();
+            document.getElementById('erp-search-input').focus();
+        }
+
+        async function searchERP() {
+            const query = document.getElementById('erp-search-input').value.trim();
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                const resultsList = document.getElementById('erp-results-list');
+                const resultsDiv = document.getElementById('erp-search-results');
+                const noResultsDiv = document.getElementById('erp-no-results');
+
+                if (data.count > 0) {
+                    resultsList.innerHTML = data.matches.map((match, idx) => `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">${match.animal_name} (${match.species})</h6>
+                                    <p class="mb-1 text-muted small">${match.race} • Owner: ${match.owner}</p>
+                                    <small class="text-secondary">ERP ID: ${match.erp_animal_id}</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="selectErpAnimal(${idx}, ${match.erp_animal_id})">
+                                    Select
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                    resultsDiv.style.display = 'block';
+                    noResultsDiv.style.display = 'none';
+                } else {
+                    resultsList.innerHTML = '';
+                    resultsDiv.style.display = 'none';
+                    noResultsDiv.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error searching ERP:', error);
+                alert('Error searching ERP: ' + error.message);
+            }
+        }
+
+        function selectErpAnimal(idx, erp_animal_id) {
+            selectedErpAnimal = erp_animal_id;
+            document.getElementById('create-new-check').checked = false;
+            document.getElementById('erp-integrate-btn').style.display = 'block';
+        }
+
         async function integrateConsultation() {
             if (!currentDetail) return;
 
             try {
-                const response = await fetch(
-                    `${API_BASE}/${currentDetail.id}/integrate`,
-                    { method: 'PATCH', headers: { 'Content-Type': 'application/json' } }
-                );
+                let url = `${API_BASE}/${currentDetail.id}/integrate`;
+                let params = [];
+
+                if (document.getElementById('create-new-check').checked) {
+                    params.push('create_new_client=true');
+                } else if (selectedErpAnimal) {
+                    params.push(`erp_animal_id=${selectedErpAnimal}`);
+                } else {
+                    alert('Please select a patient or choose to create a new client');
+                    return;
+                }
+
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+
+                const response = await fetch(url, { method: 'POST' });
 
                 if (response.ok) {
-                    alert('Integration scheduled! Refresh in a moment.');
-                    DETAIL_MODAL.hide();
-                    setTimeout(loadConsultations, 2000);
+                    const result = await response.json();
+                    alert('Integration successful! ERP ID: ' + result.erp_consult_id);
+                    ERP_SEARCH_MODAL.hide();
+                    setTimeout(loadConsultations, 1000);
                 } else {
-                    alert('Failed to integrate');
+                    const error = await response.json();
+                    alert('Failed to integrate: ' + (error.detail || 'Unknown error'));
                 }
             } catch (error) {
                 console.error('Error integrating:', error);
@@ -476,6 +661,8 @@
 
         window.showDetail = showDetail;
         window.showIntegrateModal = showIntegrateModal;
+        window.deleteConsultation = deleteConsultation;
+        window.selectErpAnimal = selectErpAnimal;
     </script>
 </body>
 </html>

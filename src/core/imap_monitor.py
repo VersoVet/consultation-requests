@@ -6,8 +6,8 @@ import json
 import imapclient
 
 from src.config import logger
-from src.core.vault import get_secret
 from src.core.database import update_imap_uid
+from src.core.vault import get_secret
 
 
 async def get_imap_credentials() -> dict:

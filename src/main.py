@@ -115,19 +115,11 @@ async def cron() -> dict:
     # Run IMAP monitoring
     try:
         uuids = await monitor_imap()
-        tasks_executed.append({
-            "task_id": "imap-monitor",
-            "status": "success",
-            "processed": len(uuids)
-        })
+        tasks_executed.append({"task_id": "imap-monitor", "status": "success", "processed": len(uuids)})
         logger.info(f"IMAP monitoring: {len(uuids)} consultations processed")
     except Exception as e:
         logger.error(f"IMAP monitoring failed: {e}")
-        tasks_executed.append({
-            "task_id": "imap-monitor",
-            "status": "failed",
-            "error": str(e)
-        })
+        tasks_executed.append({"task_id": "imap-monitor", "status": "failed", "error": str(e)})
 
     # Report WORKING status
     if HAS_SDK and onyx:

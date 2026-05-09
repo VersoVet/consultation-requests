@@ -11,7 +11,4 @@ async def get_dashboard_summary() -> dict:
         Dictionary with dashboard metrics
     """
     # Placeholder for future dashboard aggregation logic
-    return {
-        "status": "ok",
-        "message": "Dashboard service ready"
-    }
+    return {"status": "ok", "message": "Dashboard service ready"}
