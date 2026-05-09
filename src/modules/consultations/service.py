@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from src.config import logger
+from src.config import FILES_DIR, logger
 from src.core.alerting import send_email
 from src.core.database import (
     create_consultation,
@@ -15,8 +15,8 @@ from src.core.database import (
 )
 from src.core.models import ConsultationRequest
 from src.modules.consultations.files import (
-    FILES_DIR,
     download_and_store_files,
+    scan_file_with_clamd,
 )
 from src.modules.consultations.notifications import build_notification_email
 
@@ -297,8 +297,55 @@ async def pull_consultations_from_wordpress(uuid: str | None = None) -> list[str
         return []
 
 
+async def download_and_scan_files(
+    uuid: str,
+    file_urls: list[str],
+) -> list[str]:
+    """Download files from WordPress and scan with ClamAV.
+
+    Infected files are deleted and not included in the result.
+
+    Args:
+        uuid: Consultation UUID
+        file_urls: List of file URLs from WordPress
+
+    Returns:
+        List of local file paths for clean files
+    """
+    # Download files first
+    local_paths = await download_and_store_files(uuid, file_urls)
+
+    if not local_paths:
+        return []
+
+    # Scan each file with ClamAV
+    clean_paths = []
+
+    for local_path in local_paths:
+        try:
+            file_full_path = FILES_DIR / local_path
+            is_clean, threat = await scan_file_with_clamd(file_full_path)
+
+            if is_clean:
+                clean_paths.append(local_path)
+            else:
+                # Delete infected file
+                try:
+                    file_full_path.unlink()
+                    logger.warning(f"Deleted infected file: {local_path} (threat: {threat})")
+                except Exception as e:
+                    logger.error(f"Failed to delete infected file {local_path}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error scanning file {local_path}: {e}")
+
+    return clean_paths
+
+
 async def store_consultation_from_json(data: dict) -> bool:
     """Store a consultation received via email JSON attachment.
+
+    Downloads and scans files from fichiers URLs.
 
     Args:
         data: Parsed consultation dict from email attachment
@@ -323,6 +370,19 @@ async def store_consultation_from_json(data: dict) -> bool:
         )
         await update_consultation_status(consultation_id, "received")
         logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
+
+        # Download and scan files from fichiers URLs
+        fichiers = data.get("fichiers", [])
+        if fichiers:
+            logger.info(f"Downloading and scanning {len(fichiers)} file(s)...")
+            clean_files = await download_and_scan_files(uuid, fichiers)
+
+            if clean_files:
+                await update_files_local(consultation_id, clean_files)
+                logger.info(f"Stored {len(clean_files)} clean file(s) locally")
+            elif fichiers:
+                logger.warning(f"No clean files stored for {uuid}")
+
         return True
 
     except Exception as e:

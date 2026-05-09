@@ -1,6 +1,6 @@
 {
   "name": "consultation-requests",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "core": {
     "display_name": "Consultation Requests",
     "description": "Centralized management of consultation requests from verso-vet.com - receive, store, and integrate with VetoPartner ERP",
@@ -99,6 +99,7 @@
       "consultation_webhook_secret",
       "consultation_file_secret",
       "erp_api_key",
+      "erp_upload_secret",
       "email_config",
       "imap_host",
       "imap_username",

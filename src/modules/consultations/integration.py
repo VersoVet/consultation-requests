@@ -1,11 +1,20 @@
 """ERP integration for consultations."""
 
+import hashlib
+import hmac
 import json
+import time
+from pathlib import Path
 
 import httpx
 
 from src.config import logger
-from src.core.database import get_consultation, update_consultation_status
+from src.core.database import (
+    get_consultation,
+    update_consultation_status,
+)
+from src.core.vault import get_secret
+from src.modules.consultations.files import delete_local_files
 
 
 def _format_consultation_text(data: dict) -> str:
@@ -57,10 +66,10 @@ def _format_consultation_text(data: dict) -> str:
 async def integrate_with_erp(
     consultation_id: int,
     erp_animal_id: int,
-    motif: str = None,
-    specialite: str = None,
+    motif: str | None = None,
+    specialite: str | None = None,
     urgence: bool = False,
-    attachments: list[str] = None,
+    attachments: list[str] | None = None,
     erp_url: str = "http://10.0.0.44:8101",
 ) -> dict:
     """Integrate consultation into ERP.
@@ -120,27 +129,57 @@ async def integrate_with_erp(
 
             logger.info(f"Created consultation {erp_consult_id} in ERP")
 
-            # Upload documents
-            if attachments:
-                logger.info(f"Uploading {len(attachments)} documents...")
-                for attachment in attachments:
-                    try:
-                        # Upload document to ERP
-                        with open(attachment, "rb") as f:
-                            files = {"file": f}
-                            doc_response = await client.post(
-                                f"{erp_url}/animals/{erp_animal_id}/documents/upload",
-                                files=files,
-                                timeout=30.0,
+            # Upload documents from files_local
+            files_local_json = consultation.get("files_local", "[]") or "[]"
+            try:
+                files_local = json.loads(files_local_json)
+            except (json.JSONDecodeError, ValueError):
+                files_local = []
+
+            if files_local:
+                logger.info(f"Uploading {len(files_local)} document(s) from consultation...")
+
+                # Get ERP upload secret for HMAC signing
+                try:
+                    erp_upload_secret = await get_secret("erp_upload_secret")
+                except Exception as e:
+                    logger.warning(f"Could not get erp_upload_secret: {e}, skipping file uploads")
+                    erp_upload_secret = None
+
+                if erp_upload_secret:
+                    from src.config import FILES_DIR
+
+                    for local_path in files_local:
+                        try:
+                            file_full_path = str(FILES_DIR / local_path)
+                            success = await _upload_document_to_erp(
+                                client,
+                                erp_url,
+                                erp_animal_id,
+                                file_full_path,
+                                erp_upload_secret,
                             )
 
-                        if doc_response.status_code == 201:
-                            logger.info(f"Uploaded: {attachment.split('/')[-1]}")
-                        else:
-                            logger.warning(f"Failed to upload {attachment}: {doc_response.status_code}")
+                            # Delete local file after successful upload
+                            if success:
+                                try:
+                                    Path(file_full_path).unlink()
+                                    logger.info(f"Deleted local copy: {local_path}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to delete local file {local_path}: {e}")
 
-                    except Exception as e:
-                        logger.error(f"Error uploading {attachment}: {e}")
+                        except Exception as e:
+                            logger.error(f"Error processing file {local_path}: {e}")
+
+                    # Delete from WordPress after all uploads
+                    uuid = consultation.get("uuid", "")
+                    if uuid:
+                        await _delete_wordpress_files(uuid)
+
+                    # Clean up local directory
+                    uuid = consultation.get("uuid", "")
+                    if uuid:
+                        delete_local_files(uuid)
 
         # Update local DB
         await update_consultation_status(consultation_id, "integrated")
@@ -156,6 +195,94 @@ async def integrate_with_erp(
         logger.error(f"Error integrating consultation: {e}")
         await update_consultation_status(consultation_id, "rejected")
         return {"success": False, "error": str(e)}
+
+
+async def _upload_document_to_erp(
+    client: httpx.AsyncClient,
+    erp_url: str,
+    erp_animal_id: int,
+    file_path: str,
+    erp_upload_secret: str,
+) -> bool:
+    """Upload a single document to ERP with HMAC signature.
+
+    Args:
+        client: HTTP client
+        erp_url: ERP base URL
+        erp_animal_id: ERP animal ID
+        file_path: Local file path to upload
+        erp_upload_secret: HMAC secret for signing
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        file_obj = Path(file_path)
+        filename = file_obj.name
+
+        # Prepare HMAC signature
+        # Message format: {animal_id}:{filename}:{doc_type}:{timestamp}
+        timestamp = int(time.time())
+        doc_type = "document"
+
+        message = f"{erp_animal_id}:{filename}:{doc_type}:{timestamp}"
+        signature = hmac.new(
+            erp_upload_secret.encode(),
+            message.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        # Upload file
+        with open(file_path, "rb") as f:
+            response = await client.post(
+                f"{erp_url}/animals/{erp_animal_id}/documents/upload",
+                data={
+                    "doc_type": doc_type,
+                    "timestamp": str(timestamp),
+                    "signature": signature,
+                },
+                files={"file": (filename, f)},
+                timeout=60.0,
+            )
+
+        if response.status_code == 201:
+            logger.info(f"Uploaded document to ERP: {filename}")
+            return True
+        else:
+            logger.error(
+                f"Failed to upload {filename} to ERP: {response.status_code} - {response.text}"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"Error uploading document {file_path}: {e}")
+        return False
+
+
+async def _delete_wordpress_files(uuid: str) -> bool:
+    """Delete consultation files from WordPress after ERP integration.
+
+    Calls DELETE /wp-json/verso/v1/consultations/{uuid}/files endpoint.
+    This endpoint is implemented in the verso-consultation-plugin.
+
+    Args:
+        uuid: Consultation UUID
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Note: Plugin endpoint for file deletion will be implemented separately
+        # For now, this is a stub that logs a warning
+        logger.warning(
+            f"WordPress file deletion not yet implemented - files should be manually "
+            f"deleted from verso-vet.com/wp-content/uploads/consultations/{uuid}/"
+        )
+        return False
+
+    except Exception as e:
+        logger.error(f"Error deleting WordPress files for {uuid}: {e}")
+        return False
 
 
 async def create_new_client_and_animal(

@@ -295,7 +295,6 @@ async def integrate_consultation(
             motif=data.get("motif", ""),
             specialite=data.get("specialite", "general"),
             urgence=data.get("urgence", False),
-            attachments=[],  # TODO: Get from consultation files
         )
 
         if result.get("success"):

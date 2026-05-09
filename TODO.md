@@ -1,18 +1,19 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.25 | Last Updated: 2026-05-09
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.32 | Last Updated: 2026-05-09
 
 ## Current Status
-✅ **OPERATIONAL** - IMAP-based email monitoring architecture. Full delete + ERP integration UI now live.
+✅ **OPERATIONAL** - IMAP-based email monitoring with full document handling lifecycle.
 
-**Latest (2026-05-09 - v1.0.25)**:
-- ✅ DELETE endpoint implemented - mark consultation deleted + remove from IMAP
-- ✅ IMAP UID tracking added (imap_uid column in DB)
-- ✅ Route ordering fixed (GET /search before /{id})
-- ✅ Dashboard delete button (red, with confirmation)
-- ✅ Dashboard integrate modal (search ERP + patient selection)
-- 🔄 ERP search.py mapping corrections needed
-- Forge validation passing (0 errors, 1 info warning)
+**Latest (2026-05-09 - v1.0.32)**:
+- ✅ Document download from WordPress during IMAP ingestion
+- ✅ ClamAV antivirus scanning of downloaded files (non-blocking)
+- ✅ ERP document upload with HMAC-SHA256 signature
+- ✅ Local file cleanup after successful ERP upload
+- 🔄 WordPress file deletion (awaiting verso-consultation-plugin update with file-manager endpoint)
+- ✅ DELETE endpoint - mark consultation deleted + remove from IMAP
+- ✅ Dashboard delete + integrate buttons with full UI
+- Forge validation: ready for testing
 
 ## Completed ✅
 
@@ -118,6 +119,51 @@
 - [x] Dashboard delete button (red, with confirmation)
 - [x] Dashboard integrate modal (search ERP + patient selection)
 - [ ] End-to-end test with real consultations (optional)
+
+### Phase 9: Document Handling (v1.0.32) ✅ COMPLETE
+- [x] Download files from WordPress URLs (lors de l'ingestion IMAP)
+- [x] ClamAV antivirus scanning (non-blocking if unavailable)
+- [x] ERP document upload with HMAC-SHA256 signature (erp_upload_secret from Vault)
+- [x] Local file cleanup after successful upload
+- [x] Added clamd to requirements.txt
+- [x] Updated manifest.json with erp_upload_secret
+- [x] Plugin TODO.md created with file-manager endpoint specification
+- 🔄 WordPress file deletion endpoint (awaiting verso-consultation-plugin v1.0.1 update)
+
+---
+
+## Phase 9 Summary (2026-05-09)
+
+**Document Handling Complete** ✅
+
+**New Features in v1.0.32:**
+- Download files from WordPress URLs in `fichiers` field during IMAP ingestion
+- ClamAV scanning of downloaded files (non-blocking, logs warning if unavailable)
+- Files stored locally at `data/files/{uuid}/{filename}`
+- HMAC-SHA256 signed upload to ERP `/animals/{id}/documents/upload` endpoint
+- Automatic cleanup of local files after successful ERP upload
+- Stub for WordPress deletion (awaiting plugin endpoint implementation)
+
+**Implementation Details:**
+- `download_and_scan_files()` in service.py downloads + scans files
+- `scan_file_with_clamd()` in files.py connects via clamd socket
+- `_upload_document_to_erp()` in integration.py handles ERP upload with HMAC
+- `_delete_wordpress_files()` stub logs warning (plugin endpoint needed)
+- `delete_local_files()` removes local directory after upload
+
+**Pending: WordPress File Deletion**
+- Plugin endpoint `DELETE /wp-json/verso/v1/consultations/{uuid}/files` not yet implemented
+- verso-consultation-plugin v1.0.1 development in separate session
+- Once available, uncomment/enable the deletion call in integration.py
+
+**Test Checklist:**
+- [ ] Submit test consultation with document attachments
+- [ ] Verify files downloaded to `data/files/{uuid}/`
+- [ ] Verify ClamAV scan results (check logs)
+- [ ] Verify ERP upload with HMAC signature success
+- [ ] Verify local files deleted after upload
+- [ ] Test with infected file (ClamAV rejection)
+- [ ] Once plugin ready: test WordPress file deletion
 
 ---
 
