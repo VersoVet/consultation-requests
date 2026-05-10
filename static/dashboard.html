@@ -260,6 +260,14 @@
                     if (typeof c.data === 'string') {
                         c.data = JSON.parse(c.data);
                     }
+                    // Ensure files_local is parsed if it's a string
+                    if (typeof c.files_local === 'string') {
+                        try {
+                            c.files_local = JSON.parse(c.files_local);
+                        } catch (e) {
+                            c.files_local = [];
+                        }
+                    }
                     return c;
                 });
                 filterConsultations();
