@@ -40,18 +40,24 @@
             <!-- Sidebar -->
             <div class="col-lg-3 mb-4">
                 <div class="sidebar p-3 rounded">
-                    <h5 class="mb-3"><i class="bi bi-funnel"></i> Filters</h5>
+                    <h5 class="mb-3"><i class="bi bi-funnel"></i> Status Filter</h5>
 
                     <div class="mb-3">
-                        <label class="form-label">Status</label>
-                        <select class="form-select form-select-sm" id="status-filter">
-                            <option value="">All Status (excluding deleted)</option>
-                            <option value="pending">Pending</option>
-                            <option value="received">Received</option>
-                            <option value="integrated">Integrated</option>
-                            <option value="rejected">Rejected</option>
-                            <option value="deleted">Deleted Only</option>
-                        </select>
+                        <p class="small text-muted mb-2">Click to show/hide status</p>
+                        <div class="d-flex flex-column gap-2">
+                            <button class="btn btn-sm w-100 badge-toggle active" data-status="pending" style="background-color: #ffc107; color: #000; border: 2px solid #000;">
+                                <i class="bi bi-check-circle"></i> Pending
+                            </button>
+                            <button class="btn btn-sm w-100 badge-toggle active" data-status="received" style="background-color: #17a2b8; color: white; border: 2px solid transparent;">
+                                <i class="bi bi-check-circle"></i> Received
+                            </button>
+                            <button class="btn btn-sm w-100 badge-toggle" data-status="integrated" style="background-color: #28a745; color: white; border: 2px solid transparent;">
+                                <i class="bi bi-eye-slash"></i> Integrated
+                            </button>
+                            <button class="btn btn-sm w-100 badge-toggle active" data-status="rejected" style="background-color: #dc3545; color: white; border: 2px solid transparent;">
+                                <i class="bi bi-check-circle"></i> Rejected
+                            </button>
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -59,23 +65,22 @@
                         <input type="text" class="form-control form-control-sm" id="search-input" placeholder="Animal or owner name">
                     </div>
 
-                    <button class="btn btn-sm btn-primary w-100" id="apply-filters">Apply Filters</button>
-                    <button class="btn btn-sm btn-secondary w-100 mt-2" id="reset-filters">Reset</button>
+                    <button class="btn btn-sm btn-secondary w-100" id="reset-filters">Reset All Filters</button>
 
                     <hr>
 
                     <div id="stats" class="small">
                         <div class="mb-2">
-                            <span class="badge badge-pending">0</span> Pending
+                            <span class="badge badge-pending" id="stat-pending">0</span> Pending
                         </div>
                         <div class="mb-2">
-                            <span class="badge badge-received">0</span> Received
+                            <span class="badge badge-received" id="stat-received">0</span> Received
                         </div>
                         <div class="mb-2">
-                            <span class="badge badge-integrated">0</span> Integrated
+                            <span class="badge badge-integrated" id="stat-integrated">0</span> Integrated
                         </div>
                         <div class="mb-2">
-                            <span class="badge badge-rejected">0</span> Rejected
+                            <span class="badge badge-rejected" id="stat-rejected">0</span> Rejected
                         </div>
                     </div>
                 </div>
@@ -338,6 +343,8 @@
         let selectedErpAnimal = null;
         let selectedErpPatient = null;
         let selectedExistingClientId = null;
+        // Track which statuses are visible (integrated hidden by default)
+        let visibleStatuses = new Set(['pending', 'received', 'rejected']);
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -350,9 +357,7 @@
 
         function setupEventListeners() {
             document.getElementById('refresh-btn').addEventListener('click', loadConsultations);
-            document.getElementById('apply-filters').addEventListener('click', filterConsultations);
             document.getElementById('reset-filters').addEventListener('click', resetFilters);
-            document.getElementById('status-filter').addEventListener('change', filterConsultations);
             document.getElementById('search-input').addEventListener('keyup', filterConsultations);
             document.getElementById('integrate-btn').addEventListener('click', openErpSearchModal);
             document.getElementById('delete-btn').addEventListener('click', deleteCurrentConsultation);
@@ -363,6 +368,30 @@
             });
             document.getElementById('open-create-patient-btn').addEventListener('click', openCreatePatientModal);
             document.getElementById('confirm-create-patient-btn').addEventListener('click', confirmCreatePatient);
+
+            // Setup status badge toggle buttons
+            document.querySelectorAll('.badge-toggle').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const status = this.dataset.status;
+                    const icon = this.querySelector('i');
+                    const text = this.textContent.trim().split(/\s+/).slice(1).join(' ');
+
+                    if (visibleStatuses.has(status)) {
+                        visibleStatuses.delete(status);
+                        this.classList.remove('active');
+                        this.style.borderColor = 'transparent';
+                        // Change to eye-slash icon
+                        icon.className = 'bi bi-eye-slash';
+                    } else {
+                        visibleStatuses.add(status);
+                        this.classList.add('active');
+                        this.style.borderColor = '#000';
+                        // Change to check-circle icon
+                        icon.className = 'bi bi-check-circle';
+                    }
+                    filterConsultations();
+                });
+            });
         }
 
         async function loadConsultations() {
@@ -399,15 +428,15 @@
         }
 
         function filterConsultations() {
-            const status = document.getElementById('status-filter').value;
             const search = document.getElementById('search-input').value.toLowerCase();
 
             let filtered = allConsultations.filter(c => {
-                // Always hide deleted unless explicitly selected
-                if (c.status === 'deleted' && status !== 'deleted') {
+                // Hide deleted always
+                if (c.status === 'deleted') {
                     return false;
                 }
-                const matchStatus = !status || c.status === status;
+                // Check if status is visible
+                const matchStatus = visibleStatuses.has(c.status);
                 const matchSearch = !search ||
                     (c.data?.animal_nom || '').toLowerCase().includes(search) ||
                     (c.data?.owner_nom || '').toLowerCase().includes(search) ||
@@ -419,8 +448,22 @@
         }
 
         function resetFilters() {
-            document.getElementById('status-filter').value = '';
+            // Reset visible statuses to default (integrated hidden)
+            visibleStatuses = new Set(['pending', 'received', 'rejected']);
             document.getElementById('search-input').value = '';
+
+            // Update badge buttons to reflect default state
+            document.querySelectorAll('.badge-toggle').forEach(btn => {
+                const status = btn.dataset.status;
+                if (visibleStatuses.has(status)) {
+                    btn.classList.add('active');
+                    btn.style.borderColor = '#000';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.borderColor = 'transparent';
+                }
+            });
+
             filterConsultations();
         }
 
@@ -861,12 +904,11 @@
                 rejected: allConsultations.filter(c => c.status === 'rejected').length
             };
 
-            const statsDiv = document.getElementById('stats');
-            statsDiv.innerHTML = Object.entries(stats).map(([status, count]) => `
-                <div class="mb-2">
-                    <span class="badge badge-${status}">${count}</span> ${status.charAt(0).toUpperCase() + status.slice(1)}
-                </div>
-            `).join('');
+            // Update stat badges with count
+            Object.entries(stats).forEach(([status, count]) => {
+                const el = document.getElementById(`stat-${status}`);
+                if (el) el.textContent = count;
+            });
         }
 
         function showLoading(show) {
