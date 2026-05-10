@@ -160,7 +160,7 @@ async def monitor_imap() -> list[str]:
 
                 if not data:
                     logger.warning(f"No JSON attachment in: {subject}")
-                    imap.flag([uid], [r"\Seen"])
+                    imap.add_flags([uid], [r"\Seen"])
                     continue
 
                 uuid = data.get("uuid", "unknown")
