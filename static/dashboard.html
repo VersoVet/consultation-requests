@@ -688,7 +688,6 @@
             selectedErpAnimal = null;
             selectedErpPatient = null;
             document.getElementById('erp-search-input').value = '';
-            document.getElementById('create-new-check').checked = false;
             document.getElementById('erp-search-results').style.display = 'none';
             document.getElementById('erp-no-results').style.display = 'none';
             document.getElementById('erp-selected-patient').style.display = 'none';
@@ -807,8 +806,7 @@
             document.getElementById('selected-erp-id').textContent = match.erp_animal_id;
             selectedDiv.style.display = 'block';
 
-            // Uncheck "create new" and show integrate button
-            document.getElementById('create-new-check').checked = false;
+            // Show integrate button
             document.getElementById('erp-integrate-btn').style.display = 'block';
         }
 
@@ -827,9 +825,7 @@
                 let url = `${API_BASE}/${currentDetail.id}/integrate`;
                 let params = [];
 
-                if (document.getElementById('create-new-check').checked) {
-                    params.push('create_new_client=true');
-                } else if (selectedErpAnimal) {
+                if (selectedErpAnimal) {
                     params.push(`erp_animal_id=${selectedErpAnimal}`);
                 } else {
                     alert('Please select a patient or choose to create a new client');
