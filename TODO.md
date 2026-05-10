@@ -1,11 +1,11 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.32 | Last Updated: 2026-05-09
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.36 | Last Updated: 2026-05-09
 
 ## Current Status
-✅ **OPERATIONAL** - IMAP-based email monitoring with full document handling lifecycle.
+✅ **OPERATIONAL** - IMAP-based email monitoring with full document handling lifecycle and dashboard file indicators.
 
-**Latest (2026-05-09 - v1.0.32)**:
+**Latest (2026-05-09 - v1.0.36)**:
 - ✅ Document download from WordPress during IMAP ingestion
 - ✅ ClamAV antivirus scanning of downloaded files (non-blocking)
 - ✅ ERP document upload with HMAC-SHA256 signature
@@ -13,7 +13,8 @@
 - 🔄 WordPress file deletion (awaiting verso-consultation-plugin update with file-manager endpoint)
 - ✅ DELETE endpoint - mark consultation deleted + remove from IMAP
 - ✅ Dashboard delete + integrate buttons with full UI
-- Forge validation: ready for testing
+- ✅ Dashboard file attachment indicators (count badge per consultation)
+- Forge validation: ✅ PASS (0 errors, 2 info warnings)
 
 ## Completed ✅
 
@@ -157,13 +158,32 @@
 - Once available, uncomment/enable the deletion call in integration.py
 
 **Test Checklist:**
-- [ ] Submit test consultation with document attachments
-- [ ] Verify files downloaded to `data/files/{uuid}/`
-- [ ] Verify ClamAV scan results (check logs)
-- [ ] Verify ERP upload with HMAC signature success
-- [ ] Verify local files deleted after upload
-- [ ] Test with infected file (ClamAV rejection)
+- [x] Submit test consultation with document attachments
+- [x] Verify files downloaded to `data/files/{uuid}/`
+- [x] Verify ClamAV scan results (check logs)
+- [x] Verify ERP upload with HMAC signature success
+- [x] Verify local files deleted after upload
+- [x] Test with infected file (ClamAV rejection)
 - [ ] Once plugin ready: test WordPress file deletion
+
+---
+
+## Phase 10: Dashboard UX Improvements (v1.0.36) ✅ COMPLETE
+- [x] Add "Files" column to consultations table
+- [x] Display file count with visual badge when documents attached
+- [x] Show dash (-) when no documents
+- [x] Handle both JSON string and array formats for files_local
+- [x] Blue info badge with PDF icon for easy visual scanning
+- [x] Eliminates need to open detail modal to check for attachments
+
+**Implementation Details:**
+- Updated table header to include "Files" column
+- Added file parsing logic in `displayConsultations()` function
+- Files count displayed as `<badge bg-info>📄 {count}</badge>` or `-`
+- Handles JSON string parsing with try/catch fallback
+
+**User Benefit:**
+Users can now see at a glance in the main consultations table which submissions have attached documents, improving dashboard usability and reducing clicks needed to assess consultation status.
 
 ---
 
@@ -187,7 +207,7 @@
 
 ## Future Enhancements (Optional)
 
-### Phase 9: Dashboard Improvements
+### Phase 11: Advanced Dashboard Features
 - [ ] Real-time consultation updates (WebSocket)
 - [ ] File preview/thumbnail display
 - [ ] Export data (CSV, PDF)
@@ -195,7 +215,7 @@
 - [ ] Consultation statistics dashboard
 - [ ] Advanced filtering (date range, multi-status)
 
-### Phase 10: Monitoring & Observability
+### Phase 12: Monitoring & Observability
 - [ ] Email processing metrics
 - [ ] IMAP connection health monitoring
 - [ ] Database query performance tracking
@@ -203,14 +223,14 @@
 - [ ] Audit logs for compliance
 - [ ] Consultation statistics (by status, submitter, etc.)
 
-### Phase 11: Integration Enhancements
+### Phase 13: Integration Enhancements
 - [ ] VetoPartner ERP document upload after integration
 - [ ] Status webhooks back to verso-consultation-plugin
 - [ ] Automatic file cleanup (30-day retention)
 - [ ] Batch email processing optimization
 - [ ] Support for multiple IMAP mailboxes
 
-### Phase 12: Quality & Performance
+### Phase 14: Quality & Performance
 - [ ] Database query indexing optimization
 - [ ] IMAP connection pooling
 - [ ] Email attachment size limits
