@@ -17,6 +17,7 @@ from src.modules.consultations.integration import (
     integrate_with_erp,
 )
 from src.modules.consultations.search import search_animals_in_erp
+from src.modules.consultations.security import generate_file_token
 
 router = APIRouter(prefix="/consultations", tags=["consultations"])
 
@@ -95,6 +96,40 @@ async def search_animals(
 
     except Exception as e:
         logger.error(f"Error in search: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{uuid}/file-token")
+async def get_file_token(
+    uuid: str,
+    filename: Annotated[str, Query(description="Filename to generate token for")] = "",
+) -> dict:
+    """Generate HMAC token for secure file download.
+
+    Args:
+        uuid: Consultation UUID
+        filename: Filename to tokenize
+
+    Returns:
+        Dict with token for use in download URL
+    """
+    try:
+        if not filename:
+            raise HTTPException(status_code=400, detail="filename parameter required")
+
+        # Generate token for the file
+        token = await generate_file_token(f"{uuid}/{filename}")
+
+        return {
+            "uuid": uuid,
+            "filename": filename,
+            "token": token,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating file token: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -415,19 +415,55 @@
 
             let filesHtml = '';
             if (consultation.files_local && consultation.files_local.length > 0) {
+                // Generate download URLs with tokens for each file
+                const fileLinks = consultation.files_local.map(async (f) => {
+                    const filename = f.split('/')[1];
+                    try {
+                        const tokenRes = await fetch(`/consultations/${consultation.uuid}/file-token?filename=${encodeURIComponent(filename)}`);
+                        const tokenData = await tokenRes.json();
+                        return `
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span><i class="bi bi-file-pdf file-icon"></i>${filename}</span>
+                                <a href="/files/${consultation.uuid}/${filename}?token=${tokenData.token}" target="_blank" class="btn btn-sm btn-link">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </li>
+                        `;
+                    } catch (error) {
+                        console.error('Error generating file token:', error);
+                        return `
+                            <li class="list-group-item d-flex justify-content-between">
+                                <span><i class="bi bi-file-pdf file-icon"></i>${filename}</span>
+                                <span class="text-danger small">Error loading token</span>
+                            </li>
+                        `;
+                    }
+                });
+
+                Promise.all(fileLinks).then(links => {
+                    const fileListHtml = `
+                        <div class="mt-3">
+                            <h6>Documents</h6>
+                            <ul class="list-group list-group-sm">
+                                ${links.join('')}
+                            </ul>
+                        </div>
+                    `;
+                    // Update the detail body with files section
+                    const detailBody = document.getElementById('detailBody');
+                    const filesSection = detailBody.querySelector('[data-files-section]');
+                    if (filesSection) {
+                        filesSection.innerHTML = fileListHtml;
+                    } else {
+                        detailBody.innerHTML += fileListHtml;
+                    }
+                });
+
+                // Placeholder while loading tokens
                 filesHtml = `
-                    <div class="mt-3">
+                    <div class="mt-3" data-files-section>
                         <h6>Documents</h6>
-                        <ul class="list-group list-group-sm">
-                            ${consultation.files_local.map(f => `
-                                <li class="list-group-item d-flex justify-content-between">
-                                    <span><i class="bi bi-file-pdf file-icon"></i>${f.split('/')[1]}</span>
-                                    <a href="/files/${consultation.uuid}/${f.split('/')[1]}?token=test" target="_blank" class="btn btn-sm btn-link">
-                                        <i class="bi bi-download"></i>
-                                    </a>
-                                </li>
-                            `).join('')}
-                        </ul>
+                        <p class="text-muted small">Loading download links...</p>
                     </div>
                 `;
             }
