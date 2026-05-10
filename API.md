@@ -1,6 +1,6 @@
 # Consultation Requests - API Reference
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.20 | Architecture: IMAP-based + ERP Integration
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.34 | Architecture: IMAP-based + Document Handling + ERP Integration
 
 ## Overview
 

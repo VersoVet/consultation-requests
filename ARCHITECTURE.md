@@ -1,6 +1,6 @@
 # Consultation Requests - Architecture
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.18
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.34
 
 ## Overview
 
@@ -13,9 +13,11 @@ Centralized management system for consultation requests from verso-vet.com. Emai
 ### Key Features
 - **IMAP Monitoring**: Listens for emails from verso-consultation-plugin on consultations@verso-vet.com
 - **Email Parsing**: Extracts JSON attachments with structured consultation data
-- **SQLite Storage**: Persistent database with consultation records
-- **REST API**: Query consultations with filtering and pagination
-- **Web Dashboard**: Visual interface for tracking status and downloading files
+- **Document Handling**: Downloads files from WordPress, scans with ClamAV, stores locally
+- **ERP Integration**: Uploads consultations and documents to VetoPartner with HMAC signatures
+- **SQLite Storage**: Persistent database with consultation records and file tracking
+- **REST API**: Query consultations with filtering, pagination, and integration endpoints
+- **Web Dashboard**: Visual interface for tracking status, deleting consultations, integrating with ERP
 - **Token Security**: HMAC-based token validation for file downloads
 - **Database Cache Refresh**: `/refresh-db` endpoint for manual cache invalidation
 
