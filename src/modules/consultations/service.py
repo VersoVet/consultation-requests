@@ -371,8 +371,21 @@ async def store_consultation_from_json(data: dict) -> bool:
         await update_consultation_status(consultation_id, "received")
         logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
 
-        # Download and scan files from fichiers URLs
+        # Download and scan files from fichiers URLs or files array
+        # Handle both formats:
+        # - Old format: fichiers = ["http://verso-vet.com/.../file.pdf"]
+        # - New format: files = [{"stored_name": "file_0.pdf", ...}]
         fichiers = data.get("fichiers", [])
+
+        if not fichiers:
+            files_array = data.get("files", [])
+            if files_array:
+                # Construct URLs from stored file names
+                wordpress_url = "https://verso-vet.com/wp-content/uploads/consultations"
+                fichiers = [f"{wordpress_url}/{uuid}/{f.get('stored_name', f.get('original_name'))}"
+                            for f in files_array]
+                logger.info(f"Converting {len(fichiers)} file(s) from 'files' format")
+
         if fichiers:
             logger.info(f"Downloading and scanning {len(fichiers)} file(s)...")
             clean_files = await download_and_scan_files(uuid, fichiers)
