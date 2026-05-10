@@ -111,6 +111,7 @@
                                 <th>Owner</th>
                                 <th>Status</th>
                                 <th>Submitted</th>
+                                <th>Files</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -321,6 +322,24 @@
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
 
+                // Parse and count files
+                let filesCount = 0;
+                if (c.files_local) {
+                    let filesList = c.files_local;
+                    if (typeof filesList === 'string') {
+                        try {
+                            filesList = JSON.parse(filesList);
+                        } catch (e) {
+                            filesList = [];
+                        }
+                    }
+                    filesCount = Array.isArray(filesList) ? filesList.length : 0;
+                }
+
+                const filesDisplay = filesCount > 0
+                    ? `<span class="badge bg-info"><i class="bi bi-file-pdf"></i> ${filesCount}</span>`
+                    : '-';
+
                 return `
                     <tr class="consultation-row" data-id="${c.id}">
                         <td><strong>#${c.id}</strong></td>
@@ -328,6 +347,7 @@
                         <td>${owner}</td>
                         <td>${statusBadge}</td>
                         <td class="small">${submitted}</td>
+                        <td>${filesDisplay}</td>
                         <td>
                             <button class="btn btn-sm btn-info" onclick="showDetail(${c.id})">
                                 <i class="bi bi-eye"></i> View
