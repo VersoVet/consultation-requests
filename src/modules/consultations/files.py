@@ -157,3 +157,53 @@ def delete_local_files(uuid: str) -> None:
             logger.error(f"Failed to delete local files for {uuid}: {e}")
     else:
         logger.debug(f"No local files directory found for {uuid}")
+
+
+async def store_email_attachments(
+    uuid: str,
+    attachments: list[tuple[str, bytes]],
+) -> list[str]:
+    """Store email attachments locally and scan with ClamAV.
+
+    Files are saved directly from email attachments (sent by plugin),
+    not downloaded from URLs.
+
+    Args:
+        uuid: Consultation UUID
+        attachments: List of (filename, file_bytes) tuples from email
+
+    Returns:
+        List of local file paths for clean files (infected files excluded)
+    """
+    if not attachments:
+        return []
+
+    uuid_dir = FILES_DIR / uuid
+    uuid_dir.mkdir(parents=True, exist_ok=True)
+
+    clean_files = []
+
+    for filename, file_bytes in attachments:
+        try:
+            # Save file locally
+            file_path = uuid_dir / filename
+            file_path.write_bytes(file_bytes)
+            logger.info(f"Stored attachment: {filename} ({len(file_bytes)} bytes)")
+
+            # Scan with ClamAV
+            is_clean, threat = await scan_file_with_clamd(file_path)
+
+            if is_clean:
+                clean_files.append(f"{uuid}/{filename}")
+            else:
+                # Delete infected file
+                try:
+                    file_path.unlink()
+                    logger.warning(f"Deleted infected attachment: {filename} (threat: {threat})")
+                except Exception as e:
+                    logger.error(f"Failed to delete infected file {filename}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error storing attachment {filename}: {e}")
+
+    return clean_files

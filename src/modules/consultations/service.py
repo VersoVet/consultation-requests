@@ -17,6 +17,7 @@ from src.core.models import ConsultationRequest
 from src.modules.consultations.files import (
     download_and_store_files,
     scan_file_with_clamd,
+    store_email_attachments,
 )
 from src.modules.consultations.notifications import build_notification_email
 
@@ -342,13 +343,19 @@ async def download_and_scan_files(
     return clean_paths
 
 
-async def store_consultation_from_json(data: dict) -> bool:
+async def store_consultation_from_json(
+    data: dict,
+    attachments: list[tuple[str, bytes]] | None = None,
+) -> bool:
     """Store a consultation received via email JSON attachment.
 
-    Downloads and scans files from fichiers URLs.
+    Processes email attachments (documents sent directly by plugin)
+    and saves them locally with ClamAV antivirus scanning.
 
     Args:
-        data: Parsed consultation dict from email attachment
+        data: Parsed consultation dict from email JSON attachment
+        attachments: Optional list of (filename, file_bytes) tuples
+                    from email document attachments
 
     Returns:
         True if stored successfully
@@ -371,30 +378,20 @@ async def store_consultation_from_json(data: dict) -> bool:
         await update_consultation_status(consultation_id, "received")
         logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
 
-        # Download and scan files from fichiers URLs or files array
-        # Handle both formats:
-        # - Old format: fichiers = ["http://verso-vet.com/.../file.pdf"]
-        # - New format: files = [{"stored_name": "file_0.pdf", ...}]
-        fichiers = data.get("fichiers", [])
+        # Process email attachments (documents sent directly by plugin)
+        clean_files = []
 
-        if not fichiers:
-            files_array = data.get("files", [])
-            if files_array:
-                # Construct URLs from stored file names
-                wordpress_url = "https://verso-vet.com/wp-content/uploads/consultations"
-                fichiers = [f"{wordpress_url}/{uuid}/{f.get('stored_name', f.get('original_name'))}"
-                            for f in files_array]
-                logger.info(f"Converting {len(fichiers)} file(s) from 'files' format")
-
-        if fichiers:
-            logger.info(f"Downloading and scanning {len(fichiers)} file(s)...")
-            clean_files = await download_and_scan_files(uuid, fichiers)
+        if attachments:
+            logger.info(f"Processing {len(attachments)} email attachment(s)...")
+            clean_files = await store_email_attachments(uuid, attachments)
 
             if clean_files:
                 await update_files_local(consultation_id, clean_files)
                 logger.info(f"Stored {len(clean_files)} clean file(s) locally")
-            elif fichiers:
-                logger.warning(f"No clean files stored for {uuid}")
+            elif attachments:
+                logger.warning(f"No clean files stored for {uuid} (all infected)")
+        else:
+            logger.debug(f"No email attachments for consultation {uuid}")
 
         return True
 

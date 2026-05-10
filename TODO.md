@@ -187,6 +187,34 @@ Users can now see at a glance in the main consultations table which submissions 
 
 ---
 
+## Phase 11: Email Attachment Processing (v1.0.37) ✅ COMPLETE
+- [x] Plugin updated to send documents as email attachments (no server storage)
+- [x] Extract document attachments from email message (not just JSON)
+- [x] Store attachments locally with ClamAV scanning (non-blocking)
+- [x] Delete infected files automatically during ingestion
+- [x] Clarified code & documentation for email attachment workflow
+- [x] Updated ARCHITECTURE.md with new data flow diagram
+
+**Implementation Details:**
+- New `extract_file_attachments()` in imap_monitor.py extracts non-JSON attachments
+- New `store_email_attachments()` in files.py handles local storage + ClamAV scanning
+- Modified `store_consultation_from_json()` to accept attachments parameter
+- Updated `monitor_imap()` to pass attachments to service layer
+- Removed references to WordPress file server storage (no longer needed)
+
+**Key Behavior:**
+- Documents sent as email attachments by verso-consultation-plugin
+- Files saved locally to `/data/files/{uuid}/{filename}`
+- ClamAV scans immediately; infected files deleted during ingestion
+- Clean files tracked in `files_local` JSON array in database
+- Files uploaded to ERP during integration with HMAC signatures
+- Local cleanup after successful ERP upload
+
+**Deployment Note:**
+Plugin already sends attachments; no plugin changes needed. Code now properly handles this workflow.
+
+---
+
 ## Phase 8 Summary (2026-05-09)
 
 **Dashboard UI Complete** ✅

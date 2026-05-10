@@ -60,6 +60,35 @@ def extract_json_attachment(msg: email.message.Message) -> dict | None:
     return None
 
 
+def extract_file_attachments(msg: email.message.Message) -> list[tuple[str, bytes]]:
+    """Extract all non-JSON file attachments from email message.
+
+    These are document files sent directly by the consultation plugin,
+    not JSON metadata.
+
+    Args:
+        msg: Parsed email message
+
+    Returns:
+        List of (filename, file_bytes) tuples for all document attachments
+    """
+    attachments = []
+    for part in msg.walk():
+        filename = part.get_filename() or ""
+        disposition = part.get("Content-Disposition", "")
+
+        # Skip JSON metadata and non-attachments
+        if not filename or filename.endswith(".json") or "attachment" not in disposition:
+            continue
+
+        payload = part.get_payload(decode=True)
+        if payload and isinstance(payload, bytes):
+            attachments.append((filename, payload))
+            logger.debug(f"Extracted attachment: {filename} ({len(payload)} bytes)")
+
+    return attachments
+
+
 async def monitor_imap() -> list[str]:
     """Monitor IMAP mailbox for consultation emails.
 
@@ -125,7 +154,7 @@ async def monitor_imap() -> list[str]:
                 msg_bytes = email_data[uid][b"RFC822"]
                 msg = email.message_from_bytes(msg_bytes)
 
-                # Extract JSON attachment
+                # Extract JSON metadata and file attachments
                 subject = msg.get("Subject", "")
                 data = extract_json_attachment(msg)
 
@@ -137,13 +166,18 @@ async def monitor_imap() -> list[str]:
                 uuid = data.get("uuid", "unknown")
                 logger.info(f"Processing consultation {uuid} from email")
 
+                # Extract document attachments (sent directly by plugin)
+                attachments = extract_file_attachments(msg)
+                if attachments:
+                    logger.info(f"Found {len(attachments)} document attachment(s)")
+
                 # Import here to avoid circular imports
                 from src.modules.consultations.service import (
                     store_consultation_from_json,
                 )
 
-                # Store consultation from JSON data
-                result = await store_consultation_from_json(data)
+                # Store consultation from JSON data + attachments
+                result = await store_consultation_from_json(data, attachments)
 
                 if result:
                     processed_uuids.append(uuid)

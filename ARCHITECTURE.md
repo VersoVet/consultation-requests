@@ -12,12 +12,13 @@ Centralized management system for consultation requests from verso-vet.com. Emai
 
 ### Key Features
 - **IMAP Monitoring**: Listens for emails from verso-consultation-plugin on consultations@verso-vet.com
-- **Email Parsing**: Extracts JSON attachments with structured consultation data
-- **Document Handling**: Downloads files from WordPress, scans with ClamAV, stores locally
+- **Email Parsing**: Extracts JSON metadata and document attachments from emails
+- **Document Handling**: Receives files directly as email attachments, scans with ClamAV, stores locally
+- **Antivirus Scanning**: ClamAV scanning of all received documents (non-blocking if unavailable)
 - **ERP Integration**: Uploads consultations and documents to VetoPartner with HMAC signatures
-- **SQLite Storage**: Persistent database with consultation records and file tracking
+- **SQLite Storage**: Persistent database with consultation records and file path tracking
 - **REST API**: Query consultations with filtering, pagination, and integration endpoints
-- **Web Dashboard**: Visual interface for tracking status, deleting consultations, integrating with ERP
+- **Web Dashboard**: Visual interface with file indicators, status tracking, delete/integrate actions
 - **Token Security**: HMAC-based token validation for file downloads
 - **Database Cache Refresh**: `/refresh-db` endpoint for manual cache invalidation
 
@@ -110,7 +111,9 @@ Builds email with:
   - From: Verso Vet <consultations@verso-vet.com> (OVH SPF/DKIM)
   - Subject: [Verso Vet] Demande {uuid} - {animal_nom}
   - Body: Formatted text with consultation details
-  - Attachment: consultation.json (structured data)
+  - Attachment 1: consultation.json (structured data)
+  - Attachments 2+: Document files (PDF, JPEG, PNG, DICOM, etc.)
+             sent directly by plugin, NOT saved to WordPress server
   ↓
 WordPress wp_mail() sends via PHP-FPM context
 ```
@@ -126,12 +129,16 @@ IMAP monitor connects to consultations@verso-vet.com
 Search for unread emails with subject "[Verso Vet] Demande"
   ↓
 For each email:
-  - Extract consultation.json attachment
+  - Extract consultation.json attachment (metadata)
+  - Extract document attachments (PDF, JPEG, PNG, DICOM, etc.)
+  - Save documents locally: /data/files/{uuid}/{filename}
+  - ClamAV scan each document (non-blocking if unavailable)
+  - Delete infected files, keep clean ones
   - Parse JSON data
-  - Store in SQLite with status='pending'
+  - Store in SQLite with status='pending' + files_local JSON array
   - Mark email as read
   ↓
-Update dashboard with new consultations
+Update dashboard with new consultations (with file indicators)
 ```
 
 ### 3. Dashboard Display
@@ -163,56 +170,73 @@ Next query will read fresh data from database file
 ## Data Flow Diagram
 
 ```
-┌──────────────────────────────┐
-│ verso-vet.com                │
-│ (WordPress consultation form)│
-└──────────┬───────────────────┘
+┌──────────────────────────────────┐
+│ verso-vet.com                    │
+│ (WordPress consultation form)    │
+└──────────┬───────────────────────┘
            │
            │ 1. Form submission
            │ 2. Send email to consultations@verso-vet.com
-           │    with consultation.json attachment
+           │    - Attachment 1: consultation.json (metadata)
+           │    - Attachments 2+: documents (PDF, JPEG, PNG, etc.)
            ↓
-┌──────────────────────────────┐
-│ OVH Email Server             │
-│ consultations@verso-vet.com  │
-│ (IMAP mailbox)               │
-└──────────┬───────────────────┘
+┌──────────────────────────────────┐
+│ OVH Email Server                 │
+│ consultations@verso-vet.com      │
+│ (IMAP mailbox - no server storage)
+└──────────┬───────────────────────┘
            │
            │ 3. IMAP Monitor (every 60s via /cron)
            ↓
-┌──────────────────────────────┐
-│ consultation-requests (8092) │
-│ ┌──────────────────────────┐ │
-│ │ IMAP Monitor             │ │
-│ │ - Connect to IMAP        │ │
-│ │ - Search for emails      │ │
-│ │ - Extract JSON           │ │
-│ └────────┬─────────────────┘ │
-│          │                    │
-│          ↓                    │
-│ ┌──────────────────────────┐ │
-│ │ SQLite Database          │ │
-│ │ - consultations table    │ │
-│ │ - status='pending'       │ │
-│ └──────────┬───────────────┘ │
-│            │                  │
+┌──────────────────────────────────┐
+│ consultation-requests (8092)     │
+│ ┌──────────────────────────────┐ │
+│ │ IMAP Monitor                 │ │
+│ │ - Connect to IMAP            │ │
+│ │ - Search for emails          │ │
+│ │ - Extract JSON metadata      │ │
+│ │ - Extract documents          │ │
+│ └────────┬──────────────────────┘ │
+│          │                         │
+│          ↓                         │
+│ ┌──────────────────────────────┐ │
+│ │ ClamAV Scanning              │ │
+│ │ - Scan each document         │ │
+│ │ - Delete if infected         │ │
+│ │ - Keep clean files           │ │
+│ └────────┬──────────────────────┘ │
+│          │                         │
+│          ↓                         │
+│ ┌──────────────────────────────┐ │
+│ │ Local File Storage           │ │
+│ │ /data/files/{uuid}/{file}    │ │
+│ └────────┬──────────────────────┘ │
+│          │                         │
+│          ↓                         │
+│ ┌──────────────────────────────┐ │
+│ │ SQLite Database              │ │
+│ │ - consultations table        │ │
+│ │ - status='pending'           │ │
+│ │ - files_local=[paths]        │ │
+│ └──────────┬──────────────────┘ │
+│            │                     │
 │            │ 4. Dashboard reads
-│            ↓                  │
-│ ┌──────────────────────────┐ │
-│ │ REST API (/consultations)│ │
-│ │ - Filter & pagination    │ │
-│ │ - File downloads         │ │
-│ └──────────────────────────┘ │
-└──────────┬───────────────────┘
+│            ↓                     │
+│ ┌──────────────────────────────┐ │
+│ │ REST API (/consultations)    │ │
+│ │ - Filter & pagination        │ │
+│ │ - File downloads             │ │
+│ └──────────────────────────────┘ │
+└──────────┬───────────────────────┘
            │
            ↓
-┌──────────────────────────────┐
-│ Web Dashboard                │
-│ http://10.0.0.44:8092/dash...│
-│ - View consultations         │
-│ - Download attachments       │
-│ - Track status               │
-└──────────────────────────────┘
+┌──────────────────────────────────┐
+│ Web Dashboard                    │
+│ http://10.0.0.44:8092/dashboard │
+│ - View consultations             │
+│ - Download attachments           │
+│ - Track status with file badges  │
+└──────────────────────────────────┘
 ```
 
 ---
