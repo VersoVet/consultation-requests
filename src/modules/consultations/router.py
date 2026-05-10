@@ -172,29 +172,37 @@ async def get_create_patient_check(consultation_id: int) -> dict:
         owner_nom = prefill["owner_nom"]
         if owner_nom:
             matches = await search_animals_in_erp(owner_nom)
-            # Deduplicate by owner_id, build client list
+            # Filter to keep only matches where owner_name contains the search term
+            # and deduplicate by owner_id
             seen_owner_ids: set[int] = set()
+            search_lower = owner_nom.lower()
             for m in matches:
-                if m.owner_id and m.owner_id not in seen_owner_ids:
-                    seen_owner_ids.add(m.owner_id)
-                    similar_clients.append({
-                        "erp_id": m.owner_id,
-                        "nom": m.owner_name,
-                    })
+                # Check if owner name contains search term (case-insensitive)
+                if m.owner_name and search_lower in m.owner_name.lower():
+                    if m.owner_id and m.owner_id not in seen_owner_ids:
+                        seen_owner_ids.add(m.owner_id)
+                        similar_clients.append({
+                            "erp_id": m.owner_id,
+                            "nom": m.owner_name,
+                        })
 
         # Search ERP for similar animals by animal name
         similar_animals: list[dict] = []
         animal_nom = prefill["animal_nom"]
         if animal_nom:
             animal_matches = await search_animals_in_erp(animal_nom)
+            # Filter to keep only matches where animal_name contains the search term
+            search_lower = animal_nom.lower()
             for m in animal_matches:
-                similar_animals.append({
-                    "erp_animal_id": m.erp_animal_id,
-                    "animal_name": m.animal_name,
-                    "species": m.species,
-                    "owner": m.owner_name,
-                    "owner_id": m.owner_id,
-                })
+                # Check if animal name contains search term (case-insensitive)
+                if m.animal_name and search_lower in m.animal_name.lower():
+                    similar_animals.append({
+                        "erp_animal_id": m.erp_animal_id,
+                        "animal_name": m.animal_name,
+                        "species": m.species,
+                        "owner": m.owner_name,
+                        "owner_id": m.owner_id,
+                    })
 
         return {
             "consultation_id": consultation_id,
