@@ -326,7 +326,7 @@ async def create_new_client_and_animal(
                 return {"success": False}
 
             client_data = client_response.json()
-            idclient = client_data.get("idclient")
+            idclient = client_data.get("id") or client_data.get("idclient")
 
             logger.info(f"Created client {idclient}")
 
@@ -347,7 +347,7 @@ async def create_new_client_and_animal(
                 return {"success": False, "idclient": idclient}
 
             animal_data = animal_response.json()
-            idanimal = animal_data.get("idanimal")
+            idanimal = animal_data.get("id") or animal_data.get("idanimal")
 
             logger.info(f"Created animal {idanimal}")
 
@@ -359,4 +359,51 @@ async def create_new_client_and_animal(
 
     except Exception as e:
         logger.error(f"Error creating client/animal: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def add_animal_to_existing_client(
+    erp_client_id: int,
+    animal_name: str,
+    species: str,
+    race: str,
+    erp_url: str = "http://10.0.0.44:8101",
+) -> dict:
+    """Add a new animal to an existing client in ERP.
+
+    Args:
+        erp_client_id: Existing client ID in ERP
+        animal_name: Animal name
+        species: Animal species (espece)
+        race: Animal breed
+        erp_url: ERP connector URL
+
+    Returns:
+        Dict with success and idanimal
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{erp_url}/animals",
+                json={
+                    "idclient": erp_client_id,
+                    "nom": animal_name,
+                    "espece": species,
+                    "race": race,
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 201:
+                logger.error(f"Failed to create animal for client {erp_client_id}: {response.status_code} {response.text}")
+                return {"success": False}
+
+            data = response.json()
+            idanimal = data.get("id") or data.get("idanimal")
+            logger.info(f"Created animal {idanimal} for existing client {erp_client_id}")
+
+            return {"success": True, "idanimal": idanimal}
+
+    except Exception as e:
+        logger.error(f"Error adding animal to client {erp_client_id}: {e}")
         return {"success": False, "error": str(e)}

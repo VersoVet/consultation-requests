@@ -13,6 +13,7 @@ from src.core.database import (
 )
 from src.core.imap_monitor import delete_imap_email
 from src.modules.consultations.integration import (
+    add_animal_to_existing_client,
     create_new_client_and_animal,
     integrate_with_erp,
 )
@@ -130,6 +131,82 @@ async def get_file_token(
         raise
     except Exception as e:
         logger.error(f"Error generating file token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{consultation_id}/create-patient-check")
+async def get_create_patient_check(consultation_id: int) -> dict:
+    """Check for similar clients/animals before creating a new patient.
+
+    Returns pre-filled form data from consultation and lists of similar
+    clients/animals found in ERP as homonyme warnings.
+
+    Args:
+        consultation_id: Consultation ID
+
+    Returns:
+        prefill dict + similar_clients list + similar_animals list
+    """
+    try:
+        consultation = await get_consultation(consultation_id)
+        if not consultation:
+            raise HTTPException(status_code=404, detail="Consultation not found")
+
+        data = json.loads(consultation.get("data_json", "{}"))
+
+        # Build pre-fill from consultation data
+        prefill = {
+            "owner_nom": data.get("owner_nom", ""),
+            "owner_prenom": data.get("owner_prenom", ""),
+            "owner_email": data.get("owner_email", ""),
+            "owner_telephone": data.get("owner_telephone", ""),
+            "owner_address": data.get("owner_address", ""),
+            "animal_nom": data.get("animal_nom", ""),
+            "animal_espece": data.get("animal_espece", ""),
+            "animal_race": data.get("animal_race", ""),
+            "animal_sexe": data.get("animal_sexe", ""),
+        }
+
+        # Search ERP for similar clients by owner name
+        similar_clients: list[dict] = []
+        owner_nom = prefill["owner_nom"]
+        if owner_nom:
+            matches = await search_animals_in_erp(owner_nom)
+            # Deduplicate by owner_id, build client list
+            seen_owner_ids: set[int] = set()
+            for m in matches:
+                if m.owner_id and m.owner_id not in seen_owner_ids:
+                    seen_owner_ids.add(m.owner_id)
+                    similar_clients.append({
+                        "erp_id": m.owner_id,
+                        "nom": m.owner_name,
+                    })
+
+        # Search ERP for similar animals by animal name
+        similar_animals: list[dict] = []
+        animal_nom = prefill["animal_nom"]
+        if animal_nom:
+            animal_matches = await search_animals_in_erp(animal_nom)
+            for m in animal_matches:
+                similar_animals.append({
+                    "erp_animal_id": m.erp_animal_id,
+                    "animal_name": m.animal_name,
+                    "species": m.species,
+                    "owner": m.owner_name,
+                    "owner_id": m.owner_id,
+                })
+
+        return {
+            "consultation_id": consultation_id,
+            "prefill": prefill,
+            "similar_clients": similar_clients,
+            "similar_animals": similar_animals,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in create-patient-check: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -277,16 +354,30 @@ async def search_animal_matches(
 async def integrate_consultation(
     consultation_id: int,
     erp_animal_id: int | None = Query(None),
+    erp_client_id: int | None = Query(None),
     create_new_client: bool = Query(False),
+    owner_nom: str | None = Query(None),
+    owner_prenom: str | None = Query(None),
+    owner_email: str | None = Query(None),
+    owner_telephone: str | None = Query(None),
+    animal_nom: str | None = Query(None),
+    animal_espece: str | None = Query(None),
+    animal_race: str | None = Query(None),
 ) -> dict:
     """Integrate consultation into VetoPartner ERP.
 
-    Either match with existing animal or create new client+animal.
+    Three modes:
+    - erp_animal_id: link to existing animal
+    - erp_client_id: add new animal to existing client
+    - create_new_client=true: create new client + animal
 
     Args:
         consultation_id: Consultation ID to integrate
-        erp_animal_id: Animal ID in ERP (if matching existing)
-        create_new_client: If True, create new client+animal
+        erp_animal_id: Existing animal ID in ERP
+        erp_client_id: Existing client ID to add new animal to
+        create_new_client: Create new client + animal
+        owner_nom/prenom/email/telephone: Override form values for client creation
+        animal_nom/espece/race: Override form values for animal creation
 
     Returns:
         Integration result with erp_consult_id
@@ -297,22 +388,29 @@ async def integrate_consultation(
         if not consultation:
             raise HTTPException(status_code=404, detail="Consultation not found")
 
-        # Parse consultation data
+        # Parse consultation data (use form overrides if provided)
         data = json.loads(consultation.get("data_json", "{}"))
+        effective_animal_nom = animal_nom or data.get("animal_nom", "Unknown")
+        effective_animal_espece = animal_espece or data.get("animal_espece", "")
+        effective_animal_race = animal_race or data.get("animal_race", "")
 
         logger.info(f"Integrating consultation {consultation_id}...")
 
         if create_new_client:
-            # Create new client and animal
+            # Create new client and animal using form values or consultation data
             logger.info("Creating new client and animal...")
+            effective_owner_nom = owner_nom or data.get("owner_nom", "Unknown")
+            effective_owner_prenom = owner_prenom or data.get("owner_prenom", "")
+            effective_owner_email = owner_email or data.get("owner_email", "")
+            effective_owner_tel = owner_telephone or data.get("owner_telephone", "")
 
             create_result = await create_new_client_and_animal(
-                owner_name=data.get("owner_name", "Unknown"),
-                owner_email=data.get("owner_email", ""),
-                owner_phone=data.get("owner_phone", ""),
-                animal_name=data.get("animal_name", "Unknown"),
-                species=data.get("animal_species", "Unknown"),
-                race=data.get("animal_race", ""),
+                owner_name=f"{effective_owner_nom} {effective_owner_prenom}".strip(),
+                owner_email=effective_owner_email,
+                owner_phone=effective_owner_tel,
+                animal_name=effective_animal_nom,
+                species=effective_animal_espece,
+                race=effective_animal_race,
             )
 
             if not create_result.get("success"):
@@ -320,8 +418,23 @@ async def integrate_consultation(
 
             erp_animal_id = create_result["idanimal"]
 
+        elif erp_client_id:
+            # Add new animal to existing client
+            logger.info(f"Adding new animal to existing client {erp_client_id}...")
+            add_result = await add_animal_to_existing_client(
+                erp_client_id=erp_client_id,
+                animal_name=effective_animal_nom,
+                species=effective_animal_espece,
+                race=effective_animal_race,
+            )
+
+            if not add_result.get("success"):
+                raise HTTPException(status_code=400, detail="Failed to create animal for existing client")
+
+            erp_animal_id = add_result["idanimal"]
+
         elif not erp_animal_id:
-            raise HTTPException(status_code=400, detail="Either erp_animal_id or create_new_client required")
+            raise HTTPException(status_code=400, detail="erp_animal_id, erp_client_id or create_new_client required")
 
         # Now integrate with animal
         result = await integrate_with_erp(
