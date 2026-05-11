@@ -1,0 +1,79 @@
+========================================
+EMAIL TYPE - DEMANDE DE CONSULTATION
+========================================
+
+SUJET: Demande de consultation en ligne - Verso-Vet
+
+--------
+
+Madame, Monsieur,
+
+J'espère que vous et vos animaux allez bien.
+
+Pour faciliter le suivi médical de votre animal et accélérer le traitement de vos demandes de consultation, je vous propose d'utiliser notre formulaire en ligne sécurisé.
+
+COMMENT REMPLIR VOTRE DEMANDE?
+==============================
+
+1. ACCÉDEZ AU FORMULAIRE via ce lien:
+   https://verso-vet.com/consultation
+
+2. REMPLISSEZ LES INFORMATIONS demandées:
+   - Vos coordonnées (nom, prénom, email, téléphone)
+   - Informations de votre animal (nom, espèce, race, sexe, date de naissance)
+   - Description du motif de consultation
+   - Vétérinaire référent (si applicable)
+   - Urgence de la demande
+
+3. JOIGNEZ LES DOCUMENTS pertinents (optionnel mais recommandé):
+   - Radiographies
+   - Résultats d'analyses (sang, urine, etc.)
+   - Photos de la zone affectée
+   - Dossier médical antérieur
+   - Tout autre document utile
+
+4. ENVOYEZ LE FORMULAIRE - vous recevrez une confirmation par email
+
+AVANTAGES DU PROCESSUS EN LIGNE
+===============================
+
+✓ Gain de temps: remplissage à votre convenance
+✓ Documents centralisés: tous vos documents en un seul endroit
+✓ Traçabilité: confirmations et suivi par email
+✓ Sécurisé: vos données sont protégées
+✓ Plus rapide: traitement optimisé de votre demande
+
+DES QUESTIONS?
+==============
+
+Si vous avez besoin d'aide pour remplir le formulaire ou si vous préférez nous contacter directement:
+
+Email: consultations@verso-vet.com
+Téléphone: 07 44 93 82 28
+Heures de bureau: lundi-vendredi, 9h-18h
+
+FORMATS DE FICHIERS ACCEPTÉS
+=============================
+
+Images: JPG, PNG, GIF
+Documents: PDF, Word (DOC, DOCX)
+Taille max par fichier: 50 MB
+
+--------
+
+Je reste à votre disposition pour toute question.
+
+Cordialement,
+
+Dr. [VOTRE NOM]
+Verso-Vet - Clinique Vétérinaire
+[VOTRE ADRESSE]
+[VOTRE TÉLÉPHONE]
+[VOTRE EMAIL]
+
+========================================
+À PERSONNALISER:
+- Remplacer [VOTRE NOM], [VOTRE ADRESSE], etc.
+- Adapter le lien du formulaire si nécessaire
+- Ajouter votre logo ou signature personnelle
+========================================
