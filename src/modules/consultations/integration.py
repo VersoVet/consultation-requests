@@ -17,6 +17,36 @@ from src.core.vault import get_secret
 from src.modules.consultations.files import delete_local_files
 
 
+def _sanitize_text(text: str) -> str:
+    """Remove emojis and problematic characters for ERP compatibility.
+
+    Args:
+        text: Text to sanitize
+
+    Returns:
+        Sanitized text without emojis
+    """
+    if not text:
+        return text
+
+    # Remove common emoji ranges (keep only ASCII + common accented chars)
+    import re
+
+    # Pattern: match emoji and other problematic Unicode characters
+    emoji_pattern = re.compile(
+        "["
+        "\U0001f600-\U0001f64f"  # Emoticons
+        "\U0001f300-\U0001f5ff"  # Symbols & pictographs
+        "\U0001f680-\U0001f6ff"  # Transport & map symbols
+        "\U0001f1e0-\U0001f1ff"  # Flags
+        "\U00002702-\U000027b0"
+        "\U000024c2-\U0001f251"
+        "]+",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub(r"", text)
+
+
 def _format_consultation_text(data: dict) -> str:
     """Format consultation data into concise text for ERP synthese field.
 
@@ -33,8 +63,8 @@ def _format_consultation_text(data: dict) -> str:
 
     lines = []
 
-    # Motif/Description
-    motif = data.get("motif", "Consultation")
+    # Motif/Description (sanitize emojis)
+    motif = _sanitize_text(data.get("motif", "Consultation"))
     lines.append(f"Demande: {motif}")
     lines.append("")
 
@@ -52,13 +82,16 @@ def _format_consultation_text(data: dict) -> str:
     lines.append("Origine: verso-vet.com (formulaire en ligne)")
     lines.append("")
 
-    # Referring vet
+    # Referring vet (sanitize emojis)
     if data.get("vet_nom"):
-        vet_name = f"{data.get('vet_prenom', '')} {data.get('vet_nom')}".strip()
+        vet_prenom = _sanitize_text(data.get("vet_prenom", ""))
+        vet_nom = _sanitize_text(data.get("vet_nom", ""))
+        vet_name = f"{vet_prenom} {vet_nom}".strip()
         lines.append("Vétérinaire référent:")
         lines.append(f"  {vet_name}")
         if data.get("vet_clinique"):
-            lines.append(f"  Clinique: {data.get('vet_clinique')}")
+            vet_clinique = _sanitize_text(data.get("vet_clinique"))
+            lines.append(f"  Clinique: {vet_clinique}")
 
     return "\n".join(lines)
 
