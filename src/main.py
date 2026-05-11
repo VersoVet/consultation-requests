@@ -15,6 +15,7 @@ from src.config import PORT, SERVICE_NAME, VERSION, logger
 from src.core.database import init_db
 from src.core.models import HealthResponse
 from src.modules.consultations import router as consultation_router
+from src.modules.consultations.config_routes import router as config_router
 from src.modules.consultations.files import get_file_path
 from src.modules.consultations.security import validate_file_token
 from src.modules.dashboard import router as dashboard_router
@@ -75,6 +76,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(consultation_router)
+app.include_router(config_router)
 app.include_router(dashboard_router)
 
 # Mount static files if they exist

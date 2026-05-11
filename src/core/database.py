@@ -77,6 +77,18 @@ async def init_db() -> None:
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+        # Create configuration table for alerts
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT
+            )
+            """
+        )
+        conn.commit()
+
         logger.info(f"Database initialized: {DATABASE_PATH}")
 
     await loop.run_in_executor(_executor, _init)
@@ -271,3 +283,49 @@ async def update_files_local(
         conn.commit()
 
     await loop.run_in_executor(_executor, _update)
+
+
+async def get_config(key: str, default: str = "") -> str:
+    """Get configuration value by key.
+
+    Args:
+        key: Configuration key
+        default: Default value if key not found
+
+    Returns:
+        Configuration value or default
+    """
+    loop = asyncio.get_event_loop()
+
+    def _get():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row[0] if row else default
+
+    return await loop.run_in_executor(_executor, _get)
+
+
+async def set_config(key: str, value: str) -> None:
+    """Set configuration value.
+
+    Args:
+        key: Configuration key
+        value: Configuration value
+    """
+    from datetime import UTC, datetime
+
+    loop = asyncio.get_event_loop()
+
+    def _set():
+        conn = _get_sync_db()
+        cursor = conn.cursor()
+        updated_at = datetime.now(UTC).isoformat()
+        cursor.execute(
+            "INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, value, updated_at),
+        )
+        conn.commit()
+
+    await loop.run_in_executor(_executor, _set)
