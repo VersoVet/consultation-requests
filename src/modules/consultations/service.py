@@ -379,12 +379,11 @@ async def store_consultation_from_json(
         await update_consultation_status(consultation_id, "received")
         logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
 
-        # Send WhatsApp alert if phone number available
-        owner_phone = data.get("owner_telephone", "")
+        # Send WhatsApp alert to Verso
         animal_name = data.get("animal_nom", "Animal inconnu")
         owner_name = data.get("owner_nom", "Propriétaire")
-        if owner_phone:
-            await send_whatsapp_alert(owner_phone, animal_name, owner_name)
+        owner_phone = data.get("owner_telephone", "")
+        await send_whatsapp_alert(animal_name, owner_name, owner_phone)
 
         # Process email attachments (documents sent directly by plugin)
         clean_files = []

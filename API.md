@@ -1,10 +1,12 @@
 # Consultation Requests - API Reference
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.34 | Architecture: IMAP-based + Document Handling + ERP Integration
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.47 | Architecture: IMAP-based + Document Handling + ERP Integration + WhatsApp Alerts
 
 ## Overview
 
 **Email-based architecture**: verso-consultation-plugin sends emails to `consultations@verso-vet.com` → IMAP monitor fetches and parses → SQLite storage → REST API + Dashboard.
+
+**Automatic alerts**: New consultations trigger WhatsApp notifications to Verso (07 44 93 82 28) with animal and owner details.
 
 No webhook required. Service automatically monitors the mailbox every 60 seconds via `/cron` endpoint.
 
