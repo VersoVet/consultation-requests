@@ -69,6 +69,13 @@
 
                     <hr>
 
+                    <h5 class="mb-3"><i class="bi bi-gear"></i> Settings</h5>
+                    <button class="btn btn-sm btn-outline-primary w-100" id="config-btn">
+                        <i class="bi bi-telephone"></i> WhatsApp Alerts
+                    </button>
+
+                    <hr>
+
                     <div id="stats" class="small">
                         <div class="mb-2">
                             <span class="badge badge-pending" id="stat-pending">0</span> Pending
@@ -311,6 +318,44 @@
         </div>
     </div>
 
+    <!-- Configuration Modal -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-telephone"></i> WhatsApp Alerts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="whatsapp-enabled">
+                            <label class="form-check-label" for="whatsapp-enabled">
+                                Enable WhatsApp alerts
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Send alert when new consultation is received
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="whatsapp-phone" class="form-label">Phone Number</label>
+                        <input type="tel" class="form-control" id="whatsapp-phone" placeholder="07 44 93 82 28 or 33744938228">
+                        <small class="text-muted">French format (07xxx) or international (33xxx)</small>
+                    </div>
+
+                    <div id="config-status" class="alert alert-info" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="config-save-btn">
+                        <i class="bi bi-check"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -388,6 +433,14 @@
                     filterConsultations();
                 });
             });
+
+            // Configuration modal
+            const CONFIG_MODAL = new bootstrap.Modal(document.getElementById('configModal'));
+            document.getElementById('config-btn').addEventListener('click', async () => {
+                await loadWhatsAppConfig();
+                CONFIG_MODAL.show();
+            });
+            document.getElementById('config-save-btn').addEventListener('click', saveWhatsAppConfig);
         }
 
         // ============================================================================
@@ -1880,6 +1933,61 @@
             autoRefreshInterval = setInterval(() => {
                 loadConsultations();
             }, 30000); // Refresh every 30 seconds
+        }
+
+        // ============================================================================
+        // CONFIGURATION MANAGEMENT
+        // ============================================================================
+        async function loadWhatsAppConfig() {
+            try {
+                const response = await fetch('/consultations/config/whatsapp');
+                if (!response.ok) throw new Error('Failed to load config');
+
+                const data = await response.json();
+                if (data.success && data.config) {
+                    document.getElementById('whatsapp-enabled').checked = data.config.enabled;
+                    document.getElementById('whatsapp-phone').value = data.config.phone;
+                    document.getElementById('config-status').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading WhatsApp config:', error);
+                showConfigStatus('Error loading configuration', 'danger');
+            }
+        }
+
+        async function saveWhatsAppConfig() {
+            try {
+                const enabled = document.getElementById('whatsapp-enabled').checked;
+                const phone = document.getElementById('whatsapp-phone').value.trim();
+
+                const response = await fetch('/consultations/config/whatsapp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `enabled=${enabled}&phone=${encodeURIComponent(phone)}`
+                });
+
+                if (!response.ok) throw new Error('Failed to save config');
+
+                const data = await response.json();
+                if (data.success) {
+                    showConfigStatus('✅ Configuration saved!', 'success');
+                    setTimeout(() => {
+                        document.getElementById('configModal').querySelector('.btn-close').click();
+                    }, 1500);
+                } else {
+                    showConfigStatus('Error saving configuration', 'danger');
+                }
+            } catch (error) {
+                console.error('Error saving WhatsApp config:', error);
+                showConfigStatus('Error: ' + error.message, 'danger');
+            }
+        }
+
+        function showConfigStatus(message, type) {
+            const status = document.getElementById('config-status');
+            status.className = `alert alert-${type}`;
+            status.textContent = message;
+            status.style.display = 'block';
         }
 
         // ============================================================================
