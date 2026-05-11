@@ -249,9 +249,7 @@ async def _upload_document_to_erp(
             logger.info(f"Uploaded document to ERP: {filename}")
             return True
         else:
-            logger.error(
-                f"Failed to upload {filename} to ERP: {response.status_code} - {response.text}"
-            )
+            logger.error(f"Failed to upload {filename} to ERP: {response.status_code} - {response.text}")
             return False
 
     except Exception as e:
@@ -395,7 +393,9 @@ async def add_animal_to_existing_client(
             )
 
             if response.status_code != 201:
-                logger.error(f"Failed to create animal for client {erp_client_id}: {response.status_code} {response.text}")
+                logger.error(
+                    f"Failed to create animal for client {erp_client_id}: {response.status_code} {response.text}"
+                )
                 return {"success": False}
 
             data = response.json()

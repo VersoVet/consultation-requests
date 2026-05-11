@@ -14,6 +14,7 @@ from src.core.database import (
     update_files_local,
 )
 from src.core.models import ConsultationRequest
+from src.core.whatsapp import send_whatsapp_alert
 from src.modules.consultations.files import (
     download_and_store_files,
     scan_file_with_clamd,
@@ -377,6 +378,13 @@ async def store_consultation_from_json(
         )
         await update_consultation_status(consultation_id, "received")
         logger.info(f"Stored consultation {uuid} (ID: {consultation_id}) from email")
+
+        # Send WhatsApp alert if phone number available
+        owner_phone = data.get("owner_telephone", "")
+        animal_name = data.get("animal_nom", "Animal inconnu")
+        owner_name = data.get("owner_nom", "Propriétaire")
+        if owner_phone:
+            await send_whatsapp_alert(owner_phone, animal_name, owner_name)
 
         # Process email attachments (documents sent directly by plugin)
         clean_files = []

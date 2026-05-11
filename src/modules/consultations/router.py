@@ -181,10 +181,12 @@ async def get_create_patient_check(consultation_id: int) -> dict:
                 if m.owner_name and search_lower in m.owner_name.lower():
                     if m.owner_id and m.owner_id not in seen_owner_ids:
                         seen_owner_ids.add(m.owner_id)
-                        similar_clients.append({
-                            "erp_id": m.owner_id,
-                            "nom": m.owner_name,
-                        })
+                        similar_clients.append(
+                            {
+                                "erp_id": m.owner_id,
+                                "nom": m.owner_name,
+                            }
+                        )
 
         # Search ERP for similar animals by animal name
         similar_animals: list[dict] = []
@@ -196,13 +198,15 @@ async def get_create_patient_check(consultation_id: int) -> dict:
             for m in animal_matches:
                 # Check if animal name contains search term (case-insensitive)
                 if m.animal_name and search_lower in m.animal_name.lower():
-                    similar_animals.append({
-                        "erp_animal_id": m.erp_animal_id,
-                        "animal_name": m.animal_name,
-                        "species": m.species,
-                        "owner": m.owner_name,
-                        "owner_id": m.owner_id,
-                    })
+                    similar_animals.append(
+                        {
+                            "erp_animal_id": m.erp_animal_id,
+                            "animal_name": m.animal_name,
+                            "species": m.species,
+                            "owner": m.owner_name,
+                            "owner_id": m.owner_id,
+                        }
+                    )
 
         return {
             "consultation_id": consultation_id,
