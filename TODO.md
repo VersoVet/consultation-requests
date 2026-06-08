@@ -1,13 +1,16 @@
 # TODO - Consultation Requests
 
-> **Status**: 🟢 **PRODUCTION** | Version 1.0.36 | Last Updated: 2026-05-09
+> **Status**: 🟢 **PRODUCTION** | Version 1.0.55 | Last Updated: 2026-06-08
 
 ## Current Status
-✅ **OPERATIONAL** - IMAP-based email monitoring with full document handling lifecycle and dashboard file indicators.
+✅ **OPERATIONAL** - Unified consultation platform with IMAP monitoring, Scorimmo integration, and ERP lifecycle management.
 
-**Latest (2026-05-09 - v1.0.36)**:
-- ✅ Document download from WordPress during IMAP ingestion
-- ✅ ClamAV antivirus scanning of downloaded files (non-blocking)
+**Latest (2026-06-08 - v1.0.55)**:
+- ✅ Scorimmo lead centralization in dashboard with source badges
+- ✅ Source-based filtering (Web / Scorimmo)
+- ✅ Non-blocking HTTP forwarding from scorimmo-relay
+- ✅ IMAP email monitoring with full document handling
+- ✅ ClamAV antivirus scanning of uploaded files
 - ✅ ERP document upload with HMAC-SHA256 signature
 - ✅ Local file cleanup after successful ERP upload
 - 🔄 WordPress file deletion (awaiting verso-consultation-plugin update with file-manager endpoint)
@@ -112,24 +115,22 @@
 
 ## In Progress (Current Sprint)
 
-### Phase 8: Delete + ERP Integrate (v1.0.25) ✅ COMPLETE
-- [x] Backend DELETE endpoint (mark deleted + IMAP removal)
-- [x] IMAP UID tracking (imap_uid column)
-- [x] Route ordering fix
-- [x] Fix search.py ERP field mapping (id_animal, id_proprietaire, nom_proprietaire)
-- [x] Dashboard delete button (red, with confirmation)
-- [x] Dashboard integrate modal (search ERP + patient selection)
-- [ ] End-to-end test with real consultations (optional)
+### Phase 12: Scorimmo Lead Centralization (v1.0.55) ✅ COMPLETE
+- [x] Create POST /consultations/from-scorimmo endpoint
+- [x] Add source column to consultations table with auto-migration
+- [x] Map Scorimmo fields to consultation format
+- [x] Dashboard source column with visual badges
+- [x] Source-based filtering in sidebar (Web/Scorimmo toggles)
+- [x] Non-blocking HTTP forwarding from scorimmo-relay
+- [x] Handle custom_fields key variants in Scorimmo data
+- [x] End-to-end testing with live Scorimmo webhook
+- [x] Graceful error handling and fallback
 
-### Phase 9: Document Handling (v1.0.32) ✅ COMPLETE
-- [x] Download files from WordPress URLs (lors de l'ingestion IMAP)
-- [x] ClamAV antivirus scanning (non-blocking if unavailable)
-- [x] ERP document upload with HMAC-SHA256 signature (erp_upload_secret from Vault)
-- [x] Local file cleanup after successful upload
-- [x] Added clamd to requirements.txt
-- [x] Updated manifest.json with erp_upload_secret
-- [x] Plugin TODO.md created with file-manager endpoint specification
-- 🔄 WordPress file deletion endpoint (awaiting verso-consultation-plugin v1.0.1 update)
+**Status**: ✅ DEPLOYED v1.0.55
+- Both skills deployed and tested
+- scorimmo-relay changes pushed to origin
+- Dashboard shows Scorimmo leads with source badges
+- Filtering works for both Web and Scorimmo sources
 
 ---
 
@@ -215,6 +216,118 @@ Plugin already sends attachments; no plugin changes needed. Code now properly ha
 
 ---
 
+## Phase 12: Scorimmo Lead Centralization (v1.0.55) ✅ COMPLETE
+
+**Centralized Dashboard Complete** ✅
+
+**Objective**: Unify Scorimmo call center leads with web-based consultations in a single dashboard, eliminating data silos and enabling consistent ERP integration.
+
+**New Features in v1.0.55:**
+- POST /consultations/from-scorimmo endpoint for receiving Scorimmo leads
+- "Source" column in dashboard with visual badges (🔵 Web / 🟠 Scorimmo)
+- Source filtering in sidebar (toggle Web/Scorimmo visibility)
+- Automatic schema migration (add source column if missing)
+- Non-blocking HTTP forwarding from scorimmo-relay to consultation-requests
+- Full ERP integration support for Scorimmo leads
+
+**Architecture**:
+```
+scorimmo-relay (port 8110)
+  ↓ (new_lead event)
+  → forward_lead_to_consultation_requests()
+    ↓ (HTTP POST)
+    → consultation-requests (port 8092)
+      ↓
+      POST /consultations/from-scorimmo
+        ↓
+        Store in SQLite with source="scorimmo"
+        ↓
+        Dashboard displays with badge + filtering
+```
+
+**Implementation Details**:
+
+1. **Backend (consultation-requests)**:
+   - New module: `src/modules/consultations/ingest.py` (74 lines)
+   - Endpoint: `POST /consultations/from-scorimmo`
+   - Maps Scorimmo fields to consultation format:
+     - `customer_*` → `owner_*`
+     - `custom_fields["Nom de l'animal"]` → `animal_nom`
+     - Missing `animal_espece` → defaults to "Non renseigné"
+     - `specialite` set to "call-center"
+   - Database: Added `source TEXT DEFAULT 'web'` column with auto-migration
+   - Modified `store_consultation()` to accept `source: str = "web"` parameter
+
+2. **Frontend (dashboard.html)**:
+   - Added "Source" column in consultations table
+   - Visual badges:
+     - `source === 'scorimmo'` → `<span class="badge bg-warning text-dark">🟠 Scorimmo</span>`
+     - Otherwise → `<span class="badge bg-info text-white">🔵 Web</span>`
+   - New filter section in sidebar: "Source" with two toggle buttons (Web / Scorimmo)
+   - Updated `filterConsultations()` to check source visibility
+   - Modified `resetFilters()` to reset source toggles
+
+3. **Forwarding (scorimmo-relay)**:
+   - New module: `src/forwarder.py` (85 lines)
+   - Function: `async forward_lead_to_consultation_requests(lead_data: dict) -> bool`
+   - Handles dual custom_fields key variants:
+     - "Nom de l'animal" OR "Nom de l animal"
+     - "Race de l'animal" OR "Race de l animal"
+   - Non-blocking with httpx (timeouts, error handling)
+   - Returns False on error with logger.warning (graceful degradation)
+   - Constant: `CONSULTATION_REQUESTS_URL = "http://10.0.0.44:8092"`
+
+4. **Integration (scorimmo-relay main.py)**:
+   - Added async forwarding call in `handle_new_lead()` using `asyncio.create_task()`
+   - Ensures webhook response isn't delayed by HTTP forward
+   - Fires-and-forgets: lead is stored locally first, then forwarded
+
+**Data Format**:
+```json
+{
+  "uuid": "scorimmo-{lead_id}",
+  "submitter_type": "scorimmo",
+  "source": "scorimmo",
+  "animal_nom": "Rex",
+  "animal_espece": "Non renseigné",
+  "animal_race": "Labrador",
+  "owner_nom": "Dupont",
+  "owner_prenom": "Jean",
+  "owner_email": "jean@example.com",
+  "owner_telephone": "0612345678",
+  "motif": "Consultation chirurgie",
+  "specialite": "call-center",
+  "urgence": false,
+  "scorimmo_lead_id": 12345,
+  "scorimmo_origin": "Web",
+  "scorimmo_veto_habituel": "Dr Martin"
+}
+```
+
+**Key Benefits**:
+- ✅ Single source of truth for all consultations (web + Scorimmo)
+- ✅ Unified dashboard eliminates need for separate Scorimmo tracking
+- ✅ Both sources can be integrated into ERP with same workflow
+- ✅ Visual distinction with badges and filtering by source
+- ✅ Non-blocking architecture (Scorimmo webhook not delayed)
+- ✅ Graceful fallback if consultation-requests is unavailable
+
+**Testing**:
+- [x] Validate POST /consultations/from-scorimmo endpoint
+- [x] End-to-end: Send Scorimmo webhook → verify in consultation-requests dashboard
+- [x] Verify source column displays with correct badges
+- [x] Test source filtering (Web/Scorimmo toggles)
+- [x] Verify ERP integration works for Scorimmo leads
+- [x] Test graceful fallback when endpoint unavailable
+
+**Deployment Notes**:
+- Both skills must be deployed for full integration
+- scorimmo-relay forwards to consultation-requests URL (configurable)
+- No database migration needed (auto-applied on first run)
+- Schema backward-compatible (new source column defaults to 'web')
+
+---
+
 ## Phase 8 Summary (2026-05-09)
 
 **Dashboard UI Complete** ✅
@@ -235,50 +348,89 @@ Plugin already sends attachments; no plugin changes needed. Code now properly ha
 
 ## Future Enhancements (Optional)
 
-### Phase 11: Advanced Dashboard Features
+### Phase 13: Advanced Dashboard Features
 - [ ] Real-time consultation updates (WebSocket)
 - [ ] File preview/thumbnail display
 - [ ] Export data (CSV, PDF)
 - [ ] Bulk status updates
 - [ ] Consultation statistics dashboard
 - [ ] Advanced filtering (date range, multi-status)
+- [ ] Timeline view of consultation lifecycle
+- [ ] Comment/note system for collaboration
 
-### Phase 12: Monitoring & Observability
-- [ ] Email processing metrics
+### Phase 14: Monitoring & Observability
+- [ ] Email processing metrics (success rate, latency)
 - [ ] IMAP connection health monitoring
 - [ ] Database query performance tracking
 - [ ] Alert system for processing failures
 - [ ] Audit logs for compliance
-- [ ] Consultation statistics (by status, submitter, etc.)
+- [ ] Consultation statistics (by status, submitter, source, etc.)
+- [ ] Scorimmo lead forwarding metrics
+- [ ] ERP integration success rate dashboard
 
-### Phase 13: Integration Enhancements
+### Phase 15: Integration Enhancements
 - [ ] VetoPartner ERP document upload after integration
 - [ ] Status webhooks back to verso-consultation-plugin
-- [ ] Automatic file cleanup (30-day retention)
+- [ ] Automatic file cleanup (30-day retention policy)
 - [ ] Batch email processing optimization
 - [ ] Support for multiple IMAP mailboxes
+- [ ] Scorimmo lead status synchronization (bidirectional)
+- [ ] ERP consultation status feedback to dashboard
 
-### Phase 14: Quality & Performance
+### Phase 16: Quality & Performance
 - [ ] Database query indexing optimization
 - [ ] IMAP connection pooling
-- [ ] Email attachment size limits
-- [ ] Automated backups
-- [ ] Performance benchmarking
+- [ ] Email attachment size limits & compression
+- [ ] Automated backups with retention policy
+- [ ] Performance benchmarking & optimization
+- [ ] Load testing for concurrent email/webhook processing
 
 ## Architecture Notes
 
-### Email-Based Processing
+### Email-Based Processing (Web Consultations)
 ```
 verso-vet.com (WordPress)
   ↓ (form submission)
-Email to consultations@verso-vet.com (with JSON attachment)
+Email to consultations@verso-vet.com (with JSON + attachments)
   ↓ (IMAP polling every 60s)
 consultation-requests /cron endpoint
   ↓ (IMAP monitor)
-Parse JSON + store in SQLite
+Parse JSON + download attachments + ClamAV scan
   ↓ (REST API)
-GET /consultations (list/filter)
-GET /dashboard (web interface)
+Store in SQLite with source='web'
+  ↓ (REST API)
+GET /consultations (list/filter by source)
+GET /dashboard (unified web interface)
+```
+
+### Scorimmo Lead Processing (Call Center)
+```
+scorimmo-relay webhook receiver (port 8110)
+  ↓ (new_lead event)
+Handle webhook + store in local DB
+  ↓ (fire-and-forget async)
+forward_lead_to_consultation_requests()
+  ↓ (HTTP POST)
+consultation-requests (port 8092)
+  ↓
+POST /consultations/from-scorimmo
+  ↓
+Map fields + store in SQLite with source='scorimmo'
+  ↓ (REST API)
+GET /consultations (unified list with source filtering)
+GET /dashboard (shows both Web 🔵 and Scorimmo 🟠 badges)
+```
+
+### Unified Data Model
+```
+SQLite consultations table:
+- uuid (primary key)
+- source ('web' or 'scorimmo')
+- submitter_type (e.g., 'scorimmo', 'web')
+- status (pending, integrated, deleted, etc.)
+- data_json (flat structure with owner_*, animal_*, scorimmo_* fields)
+- files_local (JSON array of locally stored files)
+- created_at, updated_at, deleted_at
 ```
 
 ### Production Endpoints
