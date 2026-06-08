@@ -90,7 +90,7 @@ def _format_consultation_text(data: dict) -> str:
         lines.append("Vétérinaire référent:")
         lines.append(f"  {vet_name}")
         if data.get("vet_clinique"):
-            vet_clinique = _sanitize_text(data.get("vet_clinique"))
+            vet_clinique = _sanitize_text(data.get("vet_clinique", ""))
             lines.append(f"  Clinique: {vet_clinique}")
 
     return "\n".join(lines)

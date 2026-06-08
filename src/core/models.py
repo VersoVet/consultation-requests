@@ -80,6 +80,22 @@ class ConsultationResponse(BaseModel):
     integrated_at: str | None = Field(None, description="Integration datetime")
 
 
+class ScorimmоLeadInput(BaseModel):
+    """Scorimmo lead input for from-scorimmo endpoint."""
+
+    lead_id: int = Field(..., description="Scorimmo lead ID")
+    customer_first_name: str = Field("", description="Prospect first name")
+    customer_last_name: str = Field("", description="Prospect last name")
+    customer_email: str | None = Field(None, description="Prospect email")
+    customer_phone: str | None = Field(None, description="Prospect phone")
+    animal_nom: str | None = Field(None, description="Animal name")
+    animal_race: str | None = Field(None, description="Animal race")
+    veto_habituel: str | None = Field(None, description="Usual veterinarian")
+    motif: str | None = Field(None, description="Consultation reason")
+    origin: str | None = Field(None, description="Lead origin")
+    created_at: str | None = Field(None, description="Creation datetime")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
 

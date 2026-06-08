@@ -63,7 +63,8 @@ async def init_db() -> None:
                 erp_animal_id INTEGER,
                 erp_consult_id INTEGER,
                 integrated_at TEXT,
-                notes TEXT
+                notes TEXT,
+                source TEXT DEFAULT 'web'
             )
             """
         )
@@ -74,6 +75,14 @@ async def init_db() -> None:
             cursor.execute("ALTER TABLE consultations ADD COLUMN imap_uid INTEGER")
             conn.commit()
             logger.info("Added imap_uid column to consultations table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Add source column if it doesn't exist (migration)
+        try:
+            cursor.execute("ALTER TABLE consultations ADD COLUMN source TEXT DEFAULT 'web'")
+            conn.commit()
+            logger.info("Added source column to consultations table")
         except sqlite3.OperationalError:
             pass  # Column already exists
 
@@ -105,14 +114,16 @@ async def create_consultation(
     submitted_at: str,
     submitter_type: str,
     data_json: str,
+    source: str = "web",
 ) -> int:
     """Create a new consultation request.
 
     Args:
         uuid: Unique identifier
         submitted_at: Submission datetime (ISO)
-        submitter_type: 'vet' or 'owner'
+        submitter_type: Type of submitter (e.g., 'vet', 'owner', 'scorimmo')
         data_json: JSON-serialized ConsultationRequest
+        source: Source of consultation ('web' for IMAP, 'scorimmo' for leads)
 
     Returns:
         Database ID of created consultation
@@ -124,10 +135,10 @@ async def create_consultation(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO consultations (uuid, submitted_at, submitter_type, data_json, status)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO consultations (uuid, submitted_at, submitter_type, data_json, status, source)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (uuid, submitted_at, submitter_type, data_json, "pending"),
+            (uuid, submitted_at, submitter_type, data_json, "pending", source),
         )
         conn.commit()
         return int(cursor.lastrowid or 0)

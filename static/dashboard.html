@@ -60,6 +60,20 @@
                         </div>
                     </div>
 
+                    <h5 class="mb-3"><i class="bi bi-bookmark"></i> Source Filter</h5>
+
+                    <div class="mb-3">
+                        <p class="small text-muted mb-2">Click to show/hide source</p>
+                        <div class="d-flex flex-column gap-2">
+                            <button class="btn btn-sm w-100 source-toggle active" data-source="web" style="background-color: #0dcaf0; color: #000; border: 2px solid #000;">
+                                <i class="bi bi-globe"></i> 🔵 Web
+                            </button>
+                            <button class="btn btn-sm w-100 source-toggle active" data-source="scorimmo" style="background-color: #ffc107; color: #000; border: 2px solid transparent;">
+                                <i class="bi bi-telephone-fill"></i> 🟠 Scorimmo
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label">Search</label>
                         <input type="text" class="form-control form-control-sm" id="search-input" placeholder="Animal or owner name">
@@ -122,6 +136,7 @@
                                 <th>Animal</th>
                                 <th>Owner</th>
                                 <th>Status</th>
+                                <th>Source</th>
                                 <th>Submitted</th>
                                 <th>Files</th>
                                 <th>Actions</th>
@@ -367,6 +382,8 @@
         let autoRefreshInterval;
         // Track which statuses are visible (integrated hidden by default)
         let visibleStatuses = new Set(['pending', 'received', 'rejected']);
+        // Track which sources are visible
+        let visibleSources = new Set(['web', 'scorimmo']);
 
         // Integration state for the ERP modal
         let integrationState = {
@@ -434,6 +451,24 @@
                 });
             });
 
+            // Source filter toggle buttons
+            document.querySelectorAll('.source-toggle').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const source = this.dataset.source;
+
+                    if (visibleSources.has(source)) {
+                        visibleSources.delete(source);
+                        this.classList.remove('active');
+                        this.style.borderColor = 'transparent';
+                    } else {
+                        visibleSources.add(source);
+                        this.classList.add('active');
+                        this.style.borderColor = '#000';
+                    }
+                    filterConsultations();
+                });
+            });
+
             // Configuration modal
             const CONFIG_MODAL = new bootstrap.Modal(document.getElementById('configModal'));
             document.getElementById('config-btn').addEventListener('click', async () => {
@@ -490,13 +525,17 @@
                 // Check status filter
                 const matchStatus = visibleStatuses.has(c.status);
 
+                // Check source filter
+                const source = c.source || 'web';
+                const matchSource = visibleSources.has(source);
+
                 // Check search term
                 const matchSearch = !search ||
                     (c.data?.animal_nom || '').toLowerCase().includes(search) ||
                     (c.data?.owner_nom || '').toLowerCase().includes(search) ||
                     (c.data?.vet_nom || '').toLowerCase().includes(search);
 
-                return matchStatus && matchSearch;
+                return matchStatus && matchSource && matchSearch;
             });
 
             displayConsultations(filtered);
@@ -505,9 +544,10 @@
         function resetFilters() {
             // Reset to default visible statuses (integrated hidden by default)
             visibleStatuses = new Set(['pending', 'received', 'rejected']);
+            visibleSources = new Set(['web', 'scorimmo']);
             document.getElementById('search-input').value = '';
 
-            // Update button states
+            // Update button states for status toggles
             document.querySelectorAll('.badge-toggle').forEach(btn => {
                 const status = btn.dataset.status;
                 if (visibleStatuses.has(status)) {
@@ -518,6 +558,18 @@
                     btn.classList.remove('active');
                     btn.style.borderColor = 'transparent';
                     btn.querySelector('i').className = 'bi bi-eye-slash';
+                }
+            });
+
+            // Update button states for source toggles
+            document.querySelectorAll('.source-toggle').forEach(btn => {
+                const source = btn.dataset.source;
+                if (visibleSources.has(source)) {
+                    btn.classList.add('active');
+                    btn.style.borderColor = '#000';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.borderColor = 'transparent';
                 }
             });
 
@@ -547,6 +599,12 @@
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
 
+                // Source badge
+                const source = c.source || 'web';
+                const sourceBadge = source === 'scorimmo'
+                    ? '<span class="badge bg-warning text-dark">🟠 Scorimmo</span>'
+                    : '<span class="badge bg-info text-white">🔵 Web</span>';
+
                 // Count files
                 let filesCount = 0;
                 if (c.files_local) {
@@ -571,6 +629,7 @@
                         <td>${animal}</td>
                         <td>${owner}</td>
                         <td>${statusBadge}</td>
+                        <td>${sourceBadge}</td>
                         <td class="small">${submitted}</td>
                         <td>${filesDisplay}</td>
                         <td>
@@ -1190,13 +1249,17 @@
                 // Check status filter
                 const matchStatus = visibleStatuses.has(c.status);
 
+                // Check source filter
+                const source = c.source || 'web';
+                const matchSource = visibleSources.has(source);
+
                 // Check search term
                 const matchSearch = !search ||
                     (c.data?.animal_nom || '').toLowerCase().includes(search) ||
                     (c.data?.owner_nom || '').toLowerCase().includes(search) ||
                     (c.data?.vet_nom || '').toLowerCase().includes(search);
 
-                return matchStatus && matchSearch;
+                return matchStatus && matchSource && matchSearch;
             });
 
             displayConsultations(filtered);
@@ -1205,9 +1268,10 @@
         function resetFilters() {
             // Reset to default visible statuses (integrated hidden by default)
             visibleStatuses = new Set(['pending', 'received', 'rejected']);
+            visibleSources = new Set(['web', 'scorimmo']);
             document.getElementById('search-input').value = '';
 
-            // Update button states
+            // Update button states for status toggles
             document.querySelectorAll('.badge-toggle').forEach(btn => {
                 const status = btn.dataset.status;
                 if (visibleStatuses.has(status)) {
@@ -1218,6 +1282,18 @@
                     btn.classList.remove('active');
                     btn.style.borderColor = 'transparent';
                     btn.querySelector('i').className = 'bi bi-eye-slash';
+                }
+            });
+
+            // Update button states for source toggles
+            document.querySelectorAll('.source-toggle').forEach(btn => {
+                const source = btn.dataset.source;
+                if (visibleSources.has(source)) {
+                    btn.classList.add('active');
+                    btn.style.borderColor = '#000';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.borderColor = 'transparent';
                 }
             });
 
@@ -1247,6 +1323,12 @@
                 const submitted = new Date(c.submitted_at).toLocaleDateString('fr-FR');
                 const statusBadge = getStatusBadge(c.status);
 
+                // Source badge
+                const source = c.source || 'web';
+                const sourceBadge = source === 'scorimmo'
+                    ? '<span class="badge bg-warning text-dark">🟠 Scorimmo</span>'
+                    : '<span class="badge bg-info text-white">🔵 Web</span>';
+
                 // Count files
                 let filesCount = 0;
                 if (c.files_local) {
@@ -1271,6 +1353,7 @@
                         <td>${animal}</td>
                         <td>${owner}</td>
                         <td>${statusBadge}</td>
+                        <td>${sourceBadge}</td>
                         <td class="small">${submitted}</td>
                         <td>${filesDisplay}</td>
                         <td>
