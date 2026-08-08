@@ -1,0 +1,11 @@
+{
+  "strategy": "active",
+  "entries": [
+    {
+      "data_type": "sqlite",
+      "paths": ["/opt/onyx/skills/consultation-requests/data/consultations.db"],
+      "criticality": "high",
+      "description": "Base des demandes de consultation - données patient, historique demandes"
+    }
+  ]
+}
